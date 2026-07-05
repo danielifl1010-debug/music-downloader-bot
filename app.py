@@ -1,23 +1,19 @@
 from flask import Flask, request, jsonify
-import os
 
 app = Flask(__name__)
 
 @app.route('/', methods=['POST'])
 def home():
-    event = request.get_json()
+    data = request.get_json()
     
-    # בדיקה האם מדובר באירוע של הודעה מהמשתמש
-    if event.get('type') == 'MESSAGE':
-        user_message = event.get('message', {}).get('text', '')
+    # בדיקה אם מדובר באירוע הודעה מגוגל צ'אט
+    if data and data.get('type') == 'MESSAGE':
+        user_message = data['message'].get('text', '')
+        return jsonify({
+            "text": f"קיבלתי את ההודעה שלך: '{user_message}'. הבוט בהקמה!"
+        })
         
-        # כאן יבוא בהמשך קוד הורדת השירים, כרגע נחזיר תשובת בדיקה:
-        reply = f"קיבלתי את ההודעה שלך: '{user_message}'. הבוט בהקמה!"
-        
-        return jsonify({'text': reply})
-        
-    return jsonify({})
+    return jsonify({"text": "השרת פעיל, אך לא התקבלה הודעה תקינה."})
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(port=10000)
