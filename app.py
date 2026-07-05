@@ -5,14 +5,15 @@ app = Flask(__name__)
 @app.route('/', methods=['POST'])
 def home():
     data = request.get_json()
-    print("Google Chat Data Received:", data)
+    print("Received payload:", data)
     
-    # יצירת המבנה המדויק שגוגל צ'אט מצפה לקבל כמענה
-    response = {
-        "text": "השרת פעיל ומחובר בהצלחה! המערכת מוכנה להמשך פיתוח."
-    }
-    
-    return jsonify(response)
+    # מבנה תשובה רשמי ומלא הכולל את סוג הפעולה
+    return jsonify({
+        "actionResponse": {
+            "type": "NEW_MESSAGE"
+        },
+        "text": "השרת מחובר ומגיב בצורה תקינה!"
+    })
 
 if __name__ == '__main__':
     app.run(port=10000)
