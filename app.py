@@ -1,18 +1,17 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 import yt_dlp
 import os
 import uuid
+import requests
 
 app = Flask(__name__)
 
-# יצירת תיקיית הורדות זמנית בשרת
 DOWNLOAD_FOLDER = 'downloads'
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
 def download_song(query):
     file_id = str(uuid.uuid4())
-    # הורדת קובץ האודיו המקורי ללא המרה (חוסך את הצורך ב-FFmpeg ומונע קריסה)
     output_template = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
     
     ydl_opts = {
@@ -31,7 +30,7 @@ def download_song(query):
                 video = info
                 
             title = video.get('title', 'song')
-            ext = video.get('ext', 'm4a')  # חילוץ סיומת הקובץ המקורית
+            ext = video.get('ext', 'm4a')
             filename = f"{file_id}.{ext}"
             return title, filename
         except Exception as e:
@@ -45,39 +44,58 @@ def home():
 
     data = request.get_json()
     text = data.get("chat", {}).get("messagePayload", {}).get("message", {}).get("text", "")
-    text_lower = text.lower().strip()
-    
-    print("USER:", text)
     
     if not text:
-        reply = "אנא שלח לי שם של שיר או קישור מיוטיוב 🎵"
-    elif text_lower in ["/help", "help"]:
-        reply = "כתוב שם של שיר או קישור מיוטיוב, ואני אוריד לך אותו כקובץ שמע להורדה ישירה 🔎"
-    else:
-        title, filename = download_song(text)
-        
-        if filename:
-            # הקישור שמוביל לפונקציית ההורדה האוטומטית
-            download_url = f"https://music-downloader-bot-7tve.onrender.com/download/{filename}"
-            reply = f"השיר '{title}' מוכן! 🎵\n\nלחץ על הקישור הבא וההורדה תתחיל אוטומטית:\n{download_url}"
-        else:
-            reply = f"מצטער, נכשלתי בהורדת השיר: '{text}'. ודא שהשם תקין."
+        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": "אנא שלח שם שיר 🎵"}}}}})
 
-    return jsonify({
-        "hostAppDataAction": {
-            "chatDataAction": {
-                "createMessageAction": {
-                    "message": {
-                        "text": reply
+    # 1. הורדת השיר לשרת
+    title, filename = download_song(text)
+    
+    if filename:
+        file_path = os.path.join(DOWNLOAD_FOLDER, filename)
+        download_url = f"https://music-downloader-bot-7tve.onrender.com/download/{filename}"
+        
+        # 2. שליחת הודעה עם כרטיסייה (Card) שמכילה כפתור הורדה ישיר ומובנה בתוך גוגל צ'אט
+        return jsonify({
+            "hostAppDataAction": {
+                "chatDataAction": {
+                    "createMessageAction": {
+                        "message": {
+                            "text": f" השיר **{title}** מוכן!",
+                            "cardsV2": [{
+                                "cardId": "download_card",
+                                "card": {
+                                    "header": {
+                                        "title": title,
+                                        "subtitle": "קובץ האודיו מוכן להורדה ישירה",
+                                        "imageUrl": "https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/music_note/default/48px.svg"
+                                    },
+                                    "sections": [{
+                                        "widgets": [{
+                                            "buttonList": {
+                                                "buttons": [{
+                                                    "text": "הורד קובץ שמע 📥",
+                                                    "onClick": {
+                                                        "openLink": {
+                                                            "url": download_url
+                                                        }
+                                                    }
+                                                }]
+                                            }
+                                        }]
+                                    }]
+                                }
+                            }]
+                        }
                     }
                 }
             }
-        }
-    })
+        })
+    else:
+        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": f"נכשלתי בהורדת השיר: '{text}'"}}}}})
 
 @app.route('/download/<filename>', methods=['GET'])
 def serve_file(filename):
-    # הפונקציה הזו מכריחה את הדפדפן לבצע הורדה אוטומטית (as_attachment=True)
     return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True)
 
 if __name__ == '__main__':
