@@ -13,17 +13,28 @@ def download_song(query):
     file_id = str(uuid.uuid4())
     output_template = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
     
+    # הגדרות מורחבות למניעת חסימות מצד יוטיוב בשרתים מרוחקים
     ydl_opts = {
         'format': 'bestaudio/best',
         'noplaylist': True,
         'default_search': 'ytsearch',
         'outtmpl': output_template,
+        'geo_bypass': True,
+        'nocheckcertificate': True,
+        'quiet': True,
+        'headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info = ydl.extract_info(query, download=True)
             if 'entries' in info:
+                if not info['entries']:
+                    return None, None
                 video = info['entries'][0]
             else:
                 video = info
@@ -50,10 +61,8 @@ def home():
     title, filename = download_song(text)
     
     if filename:
-        # הכתובת הישירה של הקובץ שמזרים את האודיו
         stream_url = f"https://music-downloader-bot-7tve.onrender.com/download/{filename}"
         
-        # תגובה המכילה נגן מובנה בתוך חלון השיחה של גוגל צ'אט
         return jsonify({
             "hostAppDataAction": {
                 "chatDataAction": {
@@ -65,7 +74,7 @@ def home():
                                 "card": {
                                     "header": {
                                         "title": title,
-                                        "subtitle": "לחץ על כפתור ההפעלה להאזנה ישירה",
+                                        "subtitle": "לחץ על הקישור להפעלה בנגן המובנה",
                                         "imageUrl": "https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/music_note/default/48px.svg"
                                     },
                                     "sections": [{
@@ -97,11 +106,10 @@ def home():
             }
         })
     else:
-        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": f"נכשלתי בעיבוד השיר: '{text}'"}}}}})
+        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": f"מצטער, יוטיוב חסם את הניסיון הנוכחי לעבד את השיר: '{text}'. נסה שוב בעוד רגע."}}}}})
 
 @app.route('/download/<filename>', methods=['GET'])
 def serve_file(filename):
-    # כאן אנחנו מאפשרים גם הזרמה (inline) וגם הורדה
     return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=False)
 
 if __name__ == '__main__':
