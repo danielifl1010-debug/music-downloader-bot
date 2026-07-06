@@ -37,31 +37,39 @@ def get_google_chat_token():
         print(f"Error getting token: {e}")
         return None
 
-def download_song_via_cobalt(query):
+def download_song_via_bypass(query):
     file_id = str(uuid.uuid4())
     filename = f"{file_id}.mp3"
     file_path = os.path.join(DOWNLOAD_FOLDER, filename)
     
     try:
-        print(f"Searching and downloading via Cobalt API for: {query}")
+        print(f"Searching via reliable search API for: {query}")
         
-        # שלב א': שימוש במנוע חיפוש פתוח כדי להמיר את השם של השיר לקישור יוטיוב אמיתי
-        search_url = f"https://html.duckduckgo.com/html/?q=site:youtube.com+{requests.utils.quote(query)}"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        search_res = requests.get(search_url, headers=headers, timeout=10)
+        # שימוש ב-API חיפוש פתוח ויציב כדי למצוא את מזהה הווידאו של יוטיוב בצורה ישירה
+        search_api = f"https://api.vreden.web.id/api/yts?query={requests.utils.quote(query)}"
+        search_res = requests.get(search_api, timeout=15).json()
         
         video_url = None
-        if "watch?v=" in search_res.text:
-            start_idx = search_res.text.find("watch?v=")
-            video_id = search_res.text[start_idx+8:start_idx+19]
-            video_url = f"https://www.youtube.com/watch?v={video_id}"
+        title = "song"
+        
+        if search_res.get("status") == 200 and search_res.get("result"):
+            video_url = search_res["result"][0].get("url")
+            title = search_res["result"][0].get("title", "שיר מבוקש")
             
         if not video_url:
-            # גיבוי קל אם החיפוש נכשל - ננסה להשתמש בקישור ישיר משוער
+            # אם החיפוש נכשל, ננסה להשתמש במנוע חלופי מהיר
+            fallback_search = f"https://io.sccon.top/search?q={requests.utils.quote(query)}"
+            f_res = requests.get(fallback_search, timeout=10).json()
+            if f_res and isinstance(f_res, list) and len(f_res) > 0:
+                video_url = f"https://www.youtube.com/watch?v={f_res[0].get('id')}"
+                title = f_res[0].get('title', "שיר מבוקש")
+
+        if not video_url:
+            # מוצא אחרון - ננסה להשתמש במבנה ישיר
             video_url = f"https://www.youtube.com/results?search_query={requests.utils.quote(query)}"
-            
-        # שלב ב': פנייה לשרת ההורדות החזק Cobalt API
-        cobalt_urls = [
+
+        # פנייה למנועי Cobalt החזקים להורדה
+        cobalt_endpoints = [
             "https://cobalt.tools/api/json",
             "https://api.cobalt.tools/api/json"
         ]
@@ -69,44 +77,40 @@ def download_song_via_cobalt(query):
         payload = {
             "url": video_url,
             "isAudioOnly": True,
-            "audioFormat": "mp3",
-            "vQuality": "720"
+            "audioFormat": "mp3"
         }
         
-        cobalt_headers = {
+        headers = {
             "Accept": "application/json",
             "Content-Type": "application/json"
         }
         
-        for api_endpoint in cobalt_urls:
+        for endpoint in cobalt_endpoints:
             try:
-                res = requests.post(api_endpoint, json=payload, headers=cobalt_headers, timeout=15)
+                res = requests.post(endpoint, json=payload, headers=headers, timeout=15)
                 if res.status_code == 200:
                     res_data = res.json()
-                    download_url = res_data.get("url")
-                    title = res_data.get("filename", "song").replace(".mp3", "")
-                    
-                    if download_url:
-                        # הורדת קובץ המוזיקה המוגמר אל השרת שלנו
-                        file_response = requests.get(download_url, stream=True, timeout=45)
-                        if file_response.status_code == 200:
+                    dl_url = res_data.get("url")
+                    if dl_url:
+                        file_res = requests.get(dl_url, stream=True, timeout=45)
+                        if file_res.status_code == 200:
                             with open(file_path, 'wb') as f:
-                                for chunk in file_response.iter_content(chunk_size=8192):
+                                for chunk in file_res.iter_content(chunk_size=8192):
                                     f.write(chunk)
                             return title, filename
             except Exception as e:
-                print(f"Endpoint {api_endpoint} failed: {e}")
+                print(f"Endpoint failed: {e}")
                 continue
-
+                
     except Exception as e:
-        print(f"Cobalt Integration Error: {e}")
-    
+        print(f"Bypass Error: {e}")
+        
     return None, None
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
     if request.method == 'GET':
-        return "Bypass Bot Server is fully active with Cobalt Engine!", 200
+        return "Bypass Bot is running perfectly!", 200
 
     data = request.get_json()
     space_name = data.get("space", {}).get("name", "")
@@ -115,26 +119,27 @@ def home():
     if not text:
         return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": "אנא שלח שם שיר 🎵"}}}}})
 
-    title, filename = download_song_via_cobalt(text)
+    title, filename = download_song_via_bypass(text)
     
     if filename:
         file_path = os.path.join(DOWNLOAD_FOLDER, filename)
         token = get_google_chat_token()
+        stream_url = f"https://music-downloader-bot-7tve.onrender.com/download/{filename}"
         
+        # אם יש טוקן, ננסה קודם כל להעלות את זה כקובץ מובנה (Native Attachment)
         if token:
             try:
                 upload_url = f"https://chat.googleapis.com/v1/{space_name}/attachments:upload"
-                headers = {
+                upload_headers = {
                     "Authorization": f"Bearer {token}",
                     "Content-Type": "application/octet-stream"
                 }
-                
                 with open(file_path, "rb") as f:
-                    upload_res = requests.post(upload_url, headers=headers, data=f)
+                    upload_res = requests.post(upload_url, headers=upload_headers, data=f)
                 
                 if upload_res.status_code == 200:
                     attachment_data = upload_res.json()
-                    attachment_resource_name = attachment_data.get("attachmentDataRef", {}).get("resourceName", "")
+                    resource_name = attachment_data.get("attachmentDataRef", {}).get("resourceName", "")
                     
                     return jsonify({
                         "hostAppDataAction": {
@@ -143,7 +148,7 @@ def home():
                                     "message": {
                                         "text": f"הנה השיר שביקשת: **{title}** 🎧",
                                         "attachment": [{
-                                            "resourceName": attachment_resource_name,
+                                            "resourceName": resource_name,
                                             "contentType": "audio/mpeg"
                                         }]
                                     }
@@ -152,7 +157,44 @@ def home():
                         }
                     })
             except Exception as e:
-                print(f"Failed to upload native attachment: {e}")
+                print(f"Native upload failed, switching to button link: {e}")
 
-        stream_url = f"https://music-downloader-bot-7tve.onrender.com/download/{filename}"
-        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": f"השיר '{title}' מוכן להורדה ישירה: {
+        # פתרון גיבוי מושלם ויציב ב-100%: הודעת כרטיס יפה עם כפתור הורדה ישיר
+        return jsonify({
+            "actionResponse": {"type": "NEW_MESSAGE"},
+            "text": f"🎧 השיר שביקשת מוכן! **{title}**",
+            "cardsV2": [{
+                "cardId": "downloadCard",
+                "card": {
+                    "header": {
+                        "title": title,
+                        "subtitle": "לחץ על הכפתור כדי להוריד או להאזין לשיר",
+                        "imageUrl": "https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/music_note/default/48px.svg"
+                    },
+                    "sections": [{
+                        "widgets": [{
+                            "buttonList": {
+                                "buttons": [{
+                                    "text": "📥 הורד את השיר (MP3)",
+                                    "onClick": {
+                                        "openLink": {
+                                            "url": stream_url
+                                        }
+                                    }
+                                }]
+                            }
+                        }]
+                    }]
+                }
+            }]
+        })
+        
+    else:
+        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": f"❌ לא הצלחתי למצוא או לעבד את השיר '{text}'. נסה שם אחר או נסה שוב בעוד רגע."}}}}})
+
+@app.route('/download/<filename>', methods=['GET'])
+def serve_file(filename):
+    return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=False)
+
+if __name__ == '__main__':
+    app.run(port=10000)
