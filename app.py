@@ -8,10 +8,9 @@ from google.auth.transport.requests import Request
 
 app = Flask(__name__)
 
-# שליפת המפתח הפרטי בצורה מאובטחת מתוך משתני הסביבה של Render
+# שליפת המפתח בצורה מאובטחת ממשתני הסביבה של השרת הקיים
 PRIVATE_KEY_ENV = os.environ.get("PRIVATE_KEY", "").replace("\\n", "\n")
 
-# הגדרת פרטי חשבון השירות ללא חשיפת המפתח בקוד
 SERVICE_ACCOUNT_INFO = {
   "type": "service_account",
   "project_id": "ultra-reflector-501506-d9",
