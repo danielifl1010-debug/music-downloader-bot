@@ -8,7 +8,6 @@ from google.auth.transport.requests import Request
 
 app = Flask(__name__)
 
-# שליפת המפתח בצורה מאובטחת ממשתני הסביבה של השרת הקיים
 PRIVATE_KEY_ENV = os.environ.get("PRIVATE_KEY", "").replace("\\n", "\n")
 
 SERVICE_ACCOUNT_INFO = {
@@ -51,8 +50,10 @@ def download_song(query):
         'geo_bypass': True,
         'nocheckcertificate': True,
         'quiet': True,
+        # הוספת מקורות חלופיים למניעת חסימת "Sign in to confirm you're not a bot"
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         'headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Android 14; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0',
         }
     }
     
@@ -104,7 +105,7 @@ def home():
                     upload_res = requests.post(upload_url, headers=headers, data=f)
                 
                 if upload_res.status_code == 200:
-                    attachment_data = upload_res.get_json()
+                    attachment_data = upload_res.json()
                     attachment_resource_name = attachment_data.get("attachmentDataRef", {}).get("resourceName", "")
                     
                     return jsonify({
