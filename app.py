@@ -5,15 +5,14 @@ app = Flask(__name__)
 @app.route('/', methods=['POST'])
 def home():
     data = request.get_json()
-    print("Received payload:", data)
+    print("Payload received:", data)
     
-    # מבנה תשובה רשמי ומלא הכולל את סוג הפעולה
-    return jsonify({
-        "actionResponse": {
-            "type": "NEW_MESSAGE"
-        },
-        "text": "השרת מחובר ומגיב בצורה תקינה!"
-    })
+    # מבנה הודעה תקני המותאם לשרתי גוגל
+    response_payload = {
+        "text": "השרת פעיל ומחובר! המערכת זיהתה את ההודעה שלך בהצלחה."
+    }
+    
+    return jsonify(response_payload)
 
 if __name__ == '__main__':
     app.run(port=10000)
