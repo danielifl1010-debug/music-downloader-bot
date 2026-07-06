@@ -17,14 +17,12 @@ def home():
     if not text:
         reply = "אנא שלח לי שם של שיר או קישור מיוטיוב 🎵"
     elif text_lower in ["/help", "help"]:
-        reply = "כתוב שם של שיר או קישור מיוטיוב, ואני אביא לך קישור ישיר להורדה 🔎"
+        reply = "כתוב שם של שיר או קישור מיוטיוב, ואני אביא לך קישור חיפוש מהיר 🔎"
     else:
-        # יצירת קישור חיפוש והורדה ישיר באמצעות שירות המרה חיצוני בטוח
         query_encoded = urllib.parse.quote(text)
-        download_url = f"https://www.youtubeinmp3.com/download/?video={query_encoded}" 
-        
-        # מבנה תגובה מעולה שמספק פתרון מהיר
-        reply = f"מצאתי פתרון עבור '{text}'! 🎵\n\nלחץ על הקישור הבא כדי לעבור לעמוד ההורדה:\nhttps://www.youtube.com/results?search_query={query_encoded}\n\nאו השתמש בכלי המרה עם הקישור שברשותך."
+        # יצירת קישור ישיר לתוצאות החיפוש ביוטיוב בצורה קלה
+        youtube_url = f"https://www.youtube.com/results?search_query={query_encoded}"
+        reply = f"הנה קישור ישיר לחיפוש השיר '{text}' ביוטיוב: 🎵\n\n{youtube_url}"
 
     return jsonify({
         "hostAppDataAction": {
