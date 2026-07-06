@@ -37,45 +37,76 @@ def get_google_chat_token():
         print(f"Error getting token: {e}")
         return None
 
-def download_song_via_api(query):
+def download_song_via_cobalt(query):
     file_id = str(uuid.uuid4())
     filename = f"{file_id}.mp3"
     file_path = os.path.join(DOWNLOAD_FOLDER, filename)
     
-    # מנועי הורדה עוקפי חסימות חלופיים ויציבים ביותר
-    apis = [
-        f"https://api.w03.my.id/api/download/ytmp3?url={requests.utils.quote(query)}",
-        f"https://api.vreden.web.id/api/ytmp3?url={requests.utils.quote(query)}"
-    ]
-    
-    for api_url in apis:
-        try:
-            print(f"Trying bypass API: {api_url}")
-            response = requests.get(api_url, timeout=15)
-            if response.status_code == 200:
-                res_data = response.json()
-                # בדיקת מבנה הנתונים של השרת הראשון או השני
-                result = res_data.get("result", {})
-                download_url = result.get("download") if isinstance(result, dict) else res_data.get("url")
-                title = result.get("title", "song") if isinstance(result, dict) else res_data.get("title", "song")
-                
-                if download_url:
-                    file_response = requests.get(download_url, stream=True, timeout=45)
-                    if file_response.status_code == 200:
-                        with open(file_path, 'wb') as f:
-                            for chunk in file_response.iter_content(chunk_size=8192):
-                                f.write(chunk)
-                        return title, filename
-        except Exception as e:
-            print(f"Bypass API step failed: {e}")
-            continue
+    try:
+        print(f"Searching and downloading via Cobalt API for: {query}")
+        
+        # שלב א': שימוש במנוע חיפוש פתוח כדי להמיר את השם של השיר לקישור יוטיוב אמיתי
+        search_url = f"https://html.duckduckgo.com/html/?q=site:youtube.com+{requests.utils.quote(query)}"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        search_res = requests.get(search_url, headers=headers, timeout=10)
+        
+        video_url = None
+        if "watch?v=" in search_res.text:
+            start_idx = search_res.text.find("watch?v=")
+            video_id = search_res.text[start_idx+8:start_idx+19]
+            video_url = f"https://www.youtube.com/watch?v={video_id}"
             
+        if not video_url:
+            # גיבוי קל אם החיפוש נכשל - ננסה להשתמש בקישור ישיר משוער
+            video_url = f"https://www.youtube.com/results?search_query={requests.utils.quote(query)}"
+            
+        # שלב ב': פנייה לשרת ההורדות החזק Cobalt API
+        cobalt_urls = [
+            "https://cobalt.tools/api/json",
+            "https://api.cobalt.tools/api/json"
+        ]
+        
+        payload = {
+            "url": video_url,
+            "isAudioOnly": True,
+            "audioFormat": "mp3",
+            "vQuality": "720"
+        }
+        
+        cobalt_headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        }
+        
+        for api_endpoint in cobalt_urls:
+            try:
+                res = requests.post(api_endpoint, json=payload, headers=cobalt_headers, timeout=15)
+                if res.status_code == 200:
+                    res_data = res.json()
+                    download_url = res_data.get("url")
+                    title = res_data.get("filename", "song").replace(".mp3", "")
+                    
+                    if download_url:
+                        # הורדת קובץ המוזיקה המוגמר אל השרת שלנו
+                        file_response = requests.get(download_url, stream=True, timeout=45)
+                        if file_response.status_code == 200:
+                            with open(file_path, 'wb') as f:
+                                for chunk in file_response.iter_content(chunk_size=8192):
+                                    f.write(chunk)
+                            return title, filename
+            except Exception as e:
+                print(f"Endpoint {api_endpoint} failed: {e}")
+                continue
+
+    except Exception as e:
+        print(f"Cobalt Integration Error: {e}")
+    
     return None, None
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
     if request.method == 'GET':
-        return "Bypass Bot Server is fully active!", 200
+        return "Bypass Bot Server is fully active with Cobalt Engine!", 200
 
     data = request.get_json()
     space_name = data.get("space", {}).get("name", "")
@@ -84,8 +115,7 @@ def home():
     if not text:
         return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": "אנא שלח שם שיר 🎵"}}}}})
 
-    # שליחת הודעת ביניים מהירה לצ'אט שההורדה מתחילה כדי שהמשתמש ידע שזה עובד
-    title, filename = download_song_via_api(text)
+    title, filename = download_song_via_cobalt(text)
     
     if filename:
         file_path = os.path.join(DOWNLOAD_FOLDER, filename)
@@ -125,14 +155,4 @@ def home():
                 print(f"Failed to upload native attachment: {e}")
 
         stream_url = f"https://music-downloader-bot-7tve.onrender.com/download/{filename}"
-        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": f"השיר '{title}' מוכן להורדה ישירה: {stream_url}"}}}}})
-        
-    else:
-        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": f"❌ לא הצלחתי למצוא או להוריד את השיר '{text}'. אנא נסה שוב בעוד מספר רגעים או נסה שם אחר."}}}}})
-
-@app.route('/download/<filename>', methods=['GET'])
-def serve_file(filename):
-    return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=False)
-
-if __name__ == '__main__':
-    app.run(port=10000)
+        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": f"השיר '{title}' מוכן להורדה ישירה: {
