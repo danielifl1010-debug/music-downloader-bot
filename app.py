@@ -1,8 +1,7 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import yt_dlp
 import os
 import uuid
-import requests
 
 app = Flask(__name__)
 
@@ -48,41 +47,47 @@ def home():
     if not text:
         return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": "אנא שלח שם שיר 🎵"}}}}})
 
-    # 1. הורדת השיר לשרת
     title, filename = download_song(text)
     
     if filename:
-        file_path = os.path.join(DOWNLOAD_FOLDER, filename)
-        download_url = f"https://music-downloader-bot-7tve.onrender.com/download/{filename}"
+        # הכתובת הישירה של הקובץ שמזרים את האודיו
+        stream_url = f"https://music-downloader-bot-7tve.onrender.com/download/{filename}"
         
-        # 2. שליחת הודעה עם כרטיסייה (Card) שמכילה כפתור הורדה ישיר ומובנה בתוך גוגל צ'אט
+        # תגובה המכילה נגן מובנה בתוך חלון השיחה של גוגל צ'אט
         return jsonify({
             "hostAppDataAction": {
                 "chatDataAction": {
                     "createMessageAction": {
                         "message": {
-                            "text": f" השיר **{title}** מוכן!",
+                            "text": f"השיר **{title}** מוכן להאזנה ישירה!",
                             "cardsV2": [{
-                                "cardId": "download_card",
+                                "cardId": "audio_player_card",
                                 "card": {
                                     "header": {
                                         "title": title,
-                                        "subtitle": "קובץ האודיו מוכן להורדה ישירה",
+                                        "subtitle": "לחץ על כפתור ההפעלה להאזנה ישירה",
                                         "imageUrl": "https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/music_note/default/48px.svg"
                                     },
                                     "sections": [{
-                                        "widgets": [{
-                                            "buttonList": {
-                                                "buttons": [{
-                                                    "text": "הורד קובץ שמע 📥",
-                                                    "onClick": {
-                                                        "openLink": {
-                                                            "url": download_url
+                                        "widgets": [
+                                            {
+                                                "textParagraph": {
+                                                    "text": f"<a href=\"{stream_url}\">לחץ כאן להפעלה בנגן המובנה 🎧</a>"
+                                                }
+                                            },
+                                            {
+                                                "buttonList": {
+                                                    "buttons": [{
+                                                        "text": "הורדה למחשב 📥",
+                                                        "onClick": {
+                                                            "openLink": {
+                                                                "url": stream_url
+                                                            }
                                                         }
-                                                    }
-                                                }]
+                                                    }]
+                                                }
                                             }
-                                        }]
+                                        ]
                                     }]
                                 }
                             }]
@@ -92,11 +97,12 @@ def home():
             }
         })
     else:
-        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": f"נכשלתי בהורדת השיר: '{text}'"}}}}})
+        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": f"נכשלתי בעיבוד השיר: '{text}'"}}}}})
 
 @app.route('/download/<filename>', methods=['GET'])
 def serve_file(filename):
-    return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True)
+    # כאן אנחנו מאפשרים גם הזרמה (inline) וגם הורדה
+    return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=False)
 
 if __name__ == '__main__':
     app.run(port=10000)
