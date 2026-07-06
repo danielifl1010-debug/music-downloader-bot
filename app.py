@@ -17,7 +17,7 @@ def download_song_via_cobalt(query):
     try:
         print(f"Searching via open fallback engine for: {query}")
         
-        # שלב א': מציאת הקישור מיוטיוב באמצעות מנוע חיפוש פתוח ויציב שאינו נחסם
+        # חיפוש מהיר של השיר לקבלת קישור יוטיוב
         search_url = f"https://io.sccon.top/search?q={requests.utils.quote(query)}"
         search_res = requests.get(search_url, timeout=10).json()
         
@@ -28,10 +28,9 @@ def download_song_via_cobalt(query):
             video_url = f"https://www.youtube.com/watch?v={search_res[0].get('id')}"
             title = search_res[0].get('title', query)
         else:
-            # מוצא אחרון במידה והחיפוש הישיר נכשל
             video_url = f"https://www.youtube.com/results?search_query={requests.utils.quote(query)}"
 
-        # שלב ב': פנייה ישירה למנוע ההורדות הבינלאומי היציב ביותר (Cobalt)
+        # פנייה לשרת הורדות ישיר
         cobalt_endpoints = [
             "https://cobalt.tools/api/json",
             "https://api.cobalt.tools/api/json"
@@ -62,70 +61,36 @@ def download_song_via_cobalt(query):
                                     f.write(chunk)
                             return title, filename
             except Exception as e:
-                print(f"Cobalt endpoint failed: {e}")
+                print(f"Endpoint failed: {e}")
                 continue
                 
     except Exception as e:
-        print(f"Download processing error: {e}")
+        print(f"Error: {e}")
         
     return None, None
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
     if request.method == 'GET':
-        return "Music Downloader Bot Server is Live and Clean!", 200
+        return "Bot is running!", 200
 
     data = request.get_json()
     text = data.get("chat", {}).get("messagePayload", {}).get("message", {}).get("text", "")
     
     if not text:
-        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": "אנא שלח שם שיר 🎵"}}}}})
+        return jsonify({"text": "אנא שלח שם שיר 🎵"})
 
     title, filename = download_song_via_cobalt(text)
     
     if filename:
         stream_url = f"https://music-downloader-bot-7tve.onrender.com/download/{filename}"
-        
-        # החזרת כרטיס לחיץ מעוצב, תקני ויציב ב-100% לתוך גוגל צ'אט
+        # מענה בפורמט הטקסט הכי פשוט ויציב שגוגל צ'אט מאשר תמיד
         return jsonify({
-            "actionResponse": {"type": "NEW_MESSAGE"},
-            "text": f"🎧 השיר שביקשת מוכן!",
-            "cardsV2": [{
-                "cardId": "downloadCard",
-                "card": {
-                    "header": {
-                        "title": title,
-                        "subtitle": "לחץ על הכפתור כדי להאזין או להוריד",
-                        "imageUrl": "https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/music_note/default/48px.svg"
-                    },
-                    "sections": [{
-                        "widgets": [{
-                            "buttonList": {
-                                "buttons": [{
-                                    "text": "📥 לחץ להורדת השיר (MP3)",
-                                    "onClick": {
-                                        "openLink": {
-                                            "url": stream_url
-                                        }
-                                    }
-                                }]
-                            }
-                        }]
-                    }]
-                }
-            }]
+            "text": f"🎧 השיר שביקשת מוכן!\n\n**{title}**\n\nלחץ על הקישור הבא כדי להוריד או להאזין:\n{stream_url}"
         })
     else:
         return jsonify({
-            "hostAppDataAction": {
-                "chatDataAction": {
-                    "createMessageAction": {
-                        "message": {
-                            "text": f"❌ לא הצלחתי לעבד את השיר '{text}'. אנא נסה שוב בעוד רגע או נסה שם אחר."
-                        }
-                    }
-                }
-            }
+            "text": f"❌ לא הצלחתי למצוא או להוריד את השיר '{text}'. נסה שם אחר או נסה שוב בעוד רגע."
         })
 
 @app.route('/download/<filename>', methods=['GET'])
