@@ -9,74 +9,87 @@ DOWNLOAD_FOLDER = 'downloads'
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
+def try_cobalt_download(api_url, youtube_url, file_path):
+    """פונקציית עזר לניסיון הורדה משרת קובלט ספציפי"""
+    try:
+        payload = {
+            "url": youtube_url,
+            "isAudioOnly": True,
+            "audioFormat": "mp3",
+            "vCodec": "h264",
+            "audioBitrate": "128"
+        }
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        }
+        res = requests.post(api_url, json=payload, headers=headers, timeout=10)
+        if res.status_code == 200:
+            res_data = res.json()
+            dl_url = res_data.get("url")
+            if dl_url:
+                file_res = requests.get(dl_url, stream=True, timeout=30)
+                if file_res.status_code == 200:
+                    with open(file_path, 'wb') as f:
+                        for chunk in file_res.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    return True
+    except Exception as e:
+        print(f"Failed endpoint {api_url}: {e}")
+    return False
+
 def download_youtube_audio(youtube_url):
     file_id = str(uuid.uuid4())
     filename = f"{file_id}.mp3"
     file_path = os.path.join(DOWNLOAD_FOLDER, filename)
     
-    # מנועי הורדה ישירים מובנים
-    cobalt_endpoints = [
+    # רשימת שרתי קובלט ציבוריים ומהירים ברחבי העולם לעקיפת חסימות רשת
+    endpoints = [
         "https://cobalt.tools/api/json",
-        "https://api.cobalt.tools/api/json"
+        "https://api.cobalt.tools/api/json",
+        "https://co.wuk.sh/api/json",
+        "https://cobalt.api.g9ee.xyz/api/json"
     ]
     
-    payload = {
-        "url": youtube_url,
-        "isAudioOnly": True,
-        "audioFormat": "mp3"
-    }
-    
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
-    
-    for endpoint in cobalt_endpoints:
-        try:
-            print(f"Sending direct link to Cobalt: {endpoint}")
-            res = requests.post(endpoint, json=payload, headers=headers, timeout=15)
-            if res.status_code == 200:
-                res_data = res.json()
-                dl_url = res_data.get("url")
-                if dl_url:
-                    file_res = requests.get(dl_url, stream=True, timeout=45)
-                    if file_res.status_code == 200:
-                        with open(file_path, 'wb') as f:
-                            for chunk in file_res.iter_content(chunk_size=8192):
-                                f.write(chunk)
-                        return filename
-        except Exception as e:
-            print(f"Endpoint failed: {e}")
-            continue
+    # ניסיון חזרה (Fallback) על כל השרתים אחד אחרי השני
+    for api_url in endpoints:
+        print(f"Trying download from: {api_url}")
+        success = try_cobalt_download(api_url, youtube_url, file_path)
+        if success:
+            return filename
             
     return None
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
     if request.method == 'GET':
-        return "Direct URL Link Bot is Active!", 200
+        return "Multi-Endpoint Downloader Bot is Active!", 200
 
     data = request.get_json()
     text = data.get("chat", {}).get("messagePayload", {}).get("message", {}).get("text", "").strip()
     
     if not text:
-        return jsonify({"text": "שלח לי קישור ישיר של שיר מיוטיוב 🎵"})
+        return jsonify({"text": "אנא שלח לי קישור ישיר לשיר מיוטיוב 🎵"})
 
-    # בדיקה בסיסית אם מדובר בקישור
+    # בדיקה האם המשתמש שלח קישור תקין של יוטיוב
     if "youtube.com" in text or "youtu.be" in text:
-        filename = download_youtube_audio(text)
+        # ניקוי תווים מיותרים מהקישור במידה והגיעו עם רווחים
+        clean_url = text.split()[0] if " " in text else text
+        
+        filename = download_youtube_audio(clean_url)
         if filename:
             stream_url = f"https://music-downloader-bot-7tve.onrender.com/download/{filename}"
             return jsonify({
-                "text": f"🎧 השיר שלך הומר בהצלחה למערכת!\n\nלהורדה או האזנה לחץ על הקישור:\n{stream_url}"
+                "text": f"🎧 השיר שלך עובד והורד בהצלחה!\n\nלחץ על הקישור הבא כדי להוריד או להאזין ל-MP3:\n{stream_url}"
             })
         else:
             return jsonify({
-                "text": "❌ שרת ההורדות עמוס כרגע. אנא נסה שוב עם קישור זהה או קישור אחר בעוד מספר רגעים."
+                "text": "❌ כל שרתי ההורדה חסמו את הבקשה כרגע או שהסרטון ארוך מדי. אנא נסה שוב עם קישור אחר בעוד רגע."
             })
     else:
         return jsonify({
-            "text": "💡 הבוט עבר למצב קישורים חסין-חסימות! אנא שלח קישור יוטיוב מלא (לדוגמה: https://www.youtube.com/watch?v=dQw4w9WgXcQ)"
+            "text": "💡 נא לשלוח קישור יוטיוב ישיר בלבד!\nלדוגמה: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         })
 
 @app.route('/download/<filename>', methods=['GET'])
