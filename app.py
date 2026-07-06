@@ -5,12 +5,18 @@ app = Flask(__name__)
 @app.route("/", methods=["POST"])
 def home():
     data = request.get_json()
-    print("GOT:", data)
+    print(data)
+
+    text = data["chat"]["messagePayload"]["message"]["text"]
 
     return jsonify({
-        "text": "עובד ✔️"
-    }), 200
-
-
-if __name__ == "__main__":
-    app.run()
+        "hostAppDataAction": {
+            "chatDataAction": {
+                "createMessageAction": {
+                    "message": {
+                        "text": f"קיבלתי: {text}"
+                    }
+                }
+            }
+        }
+    })
