@@ -1,5 +1,4 @@
 from flask import Flask, request, jsonify, send_from_directory
-import yt_dlp
 import os
 import uuid
 import requests
@@ -38,47 +37,58 @@ def get_google_chat_token():
         print(f"Error getting token: {e}")
         return None
 
-def download_song(query):
+def download_song_via_api(query):
     file_id = str(uuid.uuid4())
-    output_template = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
+    filename = f"{file_id}.mp3"
+    file_path = os.path.join(DOWNLOAD_FOLDER, filename)
     
-    ydl_opts = {
-        'format': 'bestaudio[ext=m4a]/bestaudio/best',
-        'noplaylist': True,
-        'default_search': 'ytsearch',
-        'outtmpl': output_template,
-        'geo_bypass': True,
-        'nocheckcertificate': True,
-        'quiet': True,
-        # הוספת מקורות חלופיים למניעת חסימת "Sign in to confirm you're not a bot"
-        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-        'headers': {
-            'User-Agent': 'Mozilla/5.0 (Android 14; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0',
-        }
-    }
-    
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            info = ydl.extract_info(query, download=True)
-            if 'entries' in info:
-                if not info['entries']:
-                    return None, None
-                video = info['entries'][0]
-            else:
-                video = info
+    try:
+        print(f"Searching and downloading via alternative API for: {query}")
+        # שימוש בשרת הורדות חיצוני יציב שלא נחסם על ידי יוטיוב
+        api_url = f"https://api.vreden.web.id/api/ytmp3?url={query}"
+        response = requests.get(api_url, timeout=30)
+        
+        if response.status_code == 200:
+            res_data = response.json()
+            if res_data.get("status") == 200 and "result" in res_data:
+                download_url = res_data["result"].get("download")
+                title = res_data["result"].get("title", "song")
                 
-            title = video.get('title', 'song')
-            ext = video.get('ext', 'm4a')
-            filename = f"{file_id}.{ext}"
-            return title, filename
-        except Exception as e:
-            print(f"Error downloading song: {e}")
-            return None, None
+                # הורדת הקובץ עצמו לשרת שלנו
+                file_response = requests.get(download_url, stream=True, timeout=60)
+                if file_response.status_code == 200:
+                    with open(file_path, 'wb') as f:
+                        for chunk in file_response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    return title, filename
+                    
+        print("Fallback to simple search API...")
+        # שרת גיבוי שני למקרה שהראשון עמוס
+        search_url = f"https://api.vreden.web.id/api/yts?query={query}"
+        search_res = requests.get(search_url, timeout=20).json()
+        if search_res.get("status") == 200 and search_res.get("result"):
+            video_url = search_res["result"][0].get("url")
+            title = search_res["result"][0].get("title", "song")
+            
+            dl_res = requests.get(f"https://api.vreden.web.id/api/ytmp3?url={video_url}", timeout=20).json()
+            if dl_res.get("status") == 200:
+                final_url = dl_res["result"].get("download")
+                file_response = requests.get(final_url, stream=True, timeout=60)
+                if file_response.status_code == 200:
+                    with open(file_path, 'wb') as f:
+                        for chunk in file_response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    return title, filename
+
+    except Exception as e:
+        print(f"Alternative API Error: {e}")
+    
+    return None, None
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
     if request.method == 'GET':
-        return "Server is running perfectly with native attachment support!", 200
+        return "Server is running perfectly with API download bypass!", 200
 
     data = request.get_json()
     space_name = data.get("space", {}).get("name", "")
@@ -87,7 +97,7 @@ def home():
     if not text:
         return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": "אנא שלח שם שיר 🎵"}}}}})
 
-    title, filename = download_song(text)
+    title, filename = download_song_via_api(text)
     
     if filename:
         file_path = os.path.join(DOWNLOAD_FOLDER, filename)
@@ -116,7 +126,7 @@ def home():
                                         "text": f"הנה השיר שביקשת: **{title}** 🎧",
                                         "attachment": [{
                                             "resourceName": attachment_resource_name,
-                                            "contentType": "audio/mp4"
+                                            "contentType": "audio/mpeg"
                                         }]
                                     }
                                 }
@@ -130,7 +140,7 @@ def home():
         return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": f"השיר '{title}' מוכן בקישור (העלאה ישירה נכשלה): {stream_url}"}}}}})
         
     else:
-        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": f"מצטער, נכשלתי בעיבוד והורדת השיר: '{text}'"}}}}})
+        return jsonify({"hostAppDataAction": {"chatDataAction": {"createMessageAction": {"message": {"text": f"מצטער, נכשלתי בעיבוד והורדת השיר: '{text}'. יוטיוב חוסם את השרת כרגע."}}}}})
 
 @app.route('/download/<filename>', methods=['GET'])
 def serve_file(filename):
