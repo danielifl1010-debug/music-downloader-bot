@@ -26,7 +26,7 @@ def download_song(query):
     )
 
 
-    options = {
+    ydl_opts = {
 
         "format": "bestaudio/best",
 
@@ -39,54 +39,32 @@ def download_song(query):
 
         "quiet": False,
 
-
         "extractor_args": {
-
             "youtube": {
-
                 "player_client": [
                     "android",
                     "web"
                 ]
-
             }
-
         },
-
-
-        "nocheckcertificate": True,
-
-
-        "ignoreerrors": False,
-
 
         "http_headers": {
-
             "User-Agent":
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
-
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         },
 
-
         "postprocessors": [
-
             {
-
                 "key": "FFmpegExtractAudio",
-
                 "preferredcodec": "mp3",
-
                 "preferredquality": "192"
-
             }
-
         ]
-
     }
 
 
 
-    with yt_dlp.YoutubeDL(options) as ydl:
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
         result = ydl.extract_info(
             "ytsearch1:" + query,
@@ -95,13 +73,9 @@ def download_song(query):
 
 
         if "entries" in result:
-
             title = result["entries"][0]["title"]
-
         else:
-
             title = result["title"]
-
 
 
     return filename, title
@@ -129,23 +103,21 @@ def google_chat():
 
 
         return jsonify({
-
             "text":
             f"🎵 {title}\n\n⬇️ הורדה:\n{url}"
-
         })
 
 
     except Exception as e:
 
-        print("ERROR:", e)
+        print("ERROR:", str(e))
 
 
         return jsonify({
-
             "text":
-            f"❌ שגיאה בהורדה: {str(e)}"
-
+            "❌ לא הצלחתי להוריד את השיר.\n\n"
+            "סיבת השגיאה:\n" +
+            str(e)[:400]
         })
 
 
@@ -171,12 +143,10 @@ def download(filename):
 
 
 
-
 @app.route("/health")
 def health():
 
     return "OK"
-
 
 
 
