@@ -33,23 +33,48 @@ def download_song(query):
         "download",
         query,
         "--output",
-        folder
+        folder,
+        "--bitrate",
+        "192k"
     ]
 
 
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True
-    )
+
+    try:
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=180
+        )
 
 
+    except subprocess.TimeoutExpired:
+
+        raise Exception(
+            "ההורדה לקחה יותר מדי זמן"
+        )
+
+
+
+    print("===================")
+    print("SPOTDL OUTPUT:")
     print(result.stdout)
+
+    print("SPOTDL ERROR:")
     print(result.stderr)
 
+    print("===================")
 
 
-    mp3_file = None
+
+    if result.returncode != 0:
+
+        raise Exception(
+            result.stderr[-500:]
+        )
+
 
 
     for root, dirs, files in os.walk(folder):
@@ -58,41 +83,33 @@ def download_song(query):
 
             if file.endswith(".mp3"):
 
-                mp3_file = os.path.join(
+                old_path = os.path.join(
                     root,
                     file
                 )
 
-                break
+
+                new_path = os.path.join(
+                    DOWNLOAD_FOLDER,
+                    file
+                )
+
+
+                os.rename(
+                    old_path,
+                    new_path
+                )
+
+
+                return file
 
 
 
-    if not mp3_file:
-
-        raise Exception(
-            "לא נוצר קובץ MP3"
-        )
-
-
-
-    filename = os.path.basename(
-        mp3_file
+    raise Exception(
+        "לא נוצר קובץ MP3"
     )
 
 
-    new_path = os.path.join(
-        DOWNLOAD_FOLDER,
-        filename
-    )
-
-
-    os.rename(
-        mp3_file,
-        new_path
-    )
-
-
-    return filename
 
 
 
@@ -104,6 +121,11 @@ def chat():
     try:
 
         data = request.get_json()
+
+
+        print("REQUEST:")
+        print(data)
+
 
 
         text = ""
@@ -126,7 +148,10 @@ def chat():
         if not text:
 
             return jsonify({
-                "text": "❌ לא התקבל שם שיר"
+
+                "text":
+                "❌ לא התקבל שם שיר"
+
             })
 
 
@@ -161,7 +186,8 @@ def chat():
     except Exception as e:
 
 
-        print("ERROR:", e)
+        print("ERROR:")
+        print(str(e))
 
 
         return jsonify({
@@ -178,13 +204,21 @@ def chat():
 
 
 
+
 @app.route("/downloads/<filename>")
 def download(filename):
+
 
     path = os.path.join(
         DOWNLOAD_FOLDER,
         filename
     )
+
+
+    if not os.path.exists(path):
+
+        return "File not found", 404
+
 
 
     return send_file(
@@ -210,7 +244,7 @@ def health():
 @app.route("/", methods=["GET"])
 def home():
 
-    return "Bot running"
+    return "Music downloader bot running"
 
 
 
