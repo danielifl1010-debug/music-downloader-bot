@@ -3,18 +3,45 @@ import os
 import uuid
 import yt_dlp
 import glob
+import time
 
 
 app = Flask(__name__)
 
+
 DOWNLOAD_FOLDER = "downloads"
-os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+
+os.makedirs(
+    DOWNLOAD_FOLDER,
+    exist_ok=True
+)
+
+
+
+def clean_old_files():
+
+    for old_file in glob.glob(DOWNLOAD_FOLDER + "/*"):
+
+        try:
+
+            if time.time() - os.path.getmtime(old_file) > 3600:
+
+                os.remove(old_file)
+
+        except:
+
+            pass
+
 
 
 
 def download_song(query):
 
+    clean_old_files()
+
+
     file_id = str(uuid.uuid4())
+
 
     output = os.path.join(
         DOWNLOAD_FOLDER,
@@ -23,9 +50,9 @@ def download_song(query):
 
 
     clients = [
-        "web",
         "android",
-        "ios"
+        "ios",
+        "web"
     ]
 
 
@@ -34,6 +61,7 @@ def download_song(query):
 
     for client in clients:
 
+
         try:
 
             print("מנסה client:", client)
@@ -41,44 +69,87 @@ def download_song(query):
 
             options = {
 
+
                 "format": "bestaudio/best",
+
 
                 "outtmpl": output,
 
+
                 "noplaylist": True,
+
 
                 "quiet": False,
 
+
                 "socket_timeout": 30,
 
+
+                "nocheckcertificate": True,
+
+
+                "geo_bypass": True,
+
+
+                "http_headers": {
+
+                    "User-Agent":
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+
+                },
+
+
                 "extractor_args": {
+
                     "youtube": {
+
                         "player_client": [
                             client
                         ]
+
                     }
+
                 },
 
+
                 "postprocessors": [
+
                     {
-                        "key": "FFmpegExtractAudio",
-                        "preferredcodec": "mp3",
-                        "preferredquality": "192"
+
+                        "key":
+                        "FFmpegExtractAudio",
+
+                        "preferredcodec":
+                        "mp3",
+
+                        "preferredquality":
+                        "192"
+
                     }
+
                 ]
+
             }
+
 
 
             with yt_dlp.YoutubeDL(options) as ydl:
 
+
                 info = ydl.extract_info(
+
                     "ytsearch1:" + query,
+
                     download=True
+
                 )
 
 
+
             if "entries" in info:
+
                 info = info["entries"][0]
+
 
 
             title = info.get(
@@ -87,9 +158,17 @@ def download_song(query):
             )
 
 
+
             files = glob.glob(
-                DOWNLOAD_FOLDER + "/" + file_id + "*"
+                DOWNLOAD_FOLDER
+                +
+                "/"
+                +
+                file_id
+                +
+                "*"
             )
+
 
 
             if files:
@@ -100,7 +179,9 @@ def download_song(query):
                 )
 
 
+
         except Exception as e:
+
 
             last_error = str(e)
 
@@ -111,8 +192,11 @@ def download_song(query):
             )
 
 
+
     raise Exception(
-        "לא הצלחתי להוריד: " + last_error[:200]
+        "לא הצלחתי להוריד: "
+        +
+        last_error[:300]
     )
 
 
@@ -122,65 +206,108 @@ def download_song(query):
 @app.route("/", methods=["POST"])
 def chat():
 
+
     try:
 
-        data = request.json
+
+        data = request.json or {}
+
 
         text = ""
 
 
+
         if "chat" in data:
 
-            text = data["chat"]["messagePayload"]["message"]["text"]
+
+            text = (
+                data["chat"]
+                ["messagePayload"]
+                ["message"]
+                ["text"]
+            )
+
 
 
         elif "message" in data:
 
-            text = data["message"].get("text","")
+
+            text = data["message"].get(
+                "text",
+                ""
+            )
+
 
 
         if not text:
 
+
             return jsonify({
-                "text":"❌ לא קיבלתי שם שיר"
+
+                "text":
+                "❌ לא קיבלתי שם שיר"
+
             })
 
 
-        print("מחפש:", text)
+
+        print(
+            "מחפש להוריד:",
+            text
+        )
+
 
 
         filename, title = download_song(text)
 
 
+
         url = (
-            request.host_url
+
+            "https://"
             +
-            "downloads/"
+            request.host
+            +
+            "/downloads/"
             +
             filename
+
         )
+
 
 
         return jsonify({
 
+
             "text":
+
             f"🎵 {title}\n\n⬇️ הורדה:\n{url}"
 
+
         })
+
 
 
     except Exception as e:
 
 
-        print("ERROR:", e)
+
+        print(
+            "ERROR:",
+            e
+        )
+
 
 
         return jsonify({
 
             "text":
-            "❌ שגיאה:\n" + str(e)
+            "❌ שגיאה:\n"
+            +
+            str(e)[:500]
 
         })
+
 
 
 
@@ -189,13 +316,19 @@ def chat():
 @app.route("/downloads/<filename>")
 def downloads(filename):
 
+
     return send_file(
+
         os.path.join(
             DOWNLOAD_FOLDER,
             filename
         ),
+
         as_attachment=True
+
     )
+
+
 
 
 
@@ -204,6 +337,8 @@ def downloads(filename):
 def health():
 
     return "OK"
+
+
 
 
 
@@ -217,9 +352,19 @@ def home():
 
 
 
+
 if __name__ == "__main__":
 
+
     app.run(
+
         host="0.0.0.0",
-        port=8080
+
+        port=int(
+            os.environ.get(
+                "PORT",
+                10000
+            )
+        )
+
     )
