@@ -2,13 +2,14 @@ from flask import Flask, request, jsonify, send_file
 import os
 import uuid
 import yt_dlp
+import glob
 
 
 app = Flask(__name__)
 
 DOWNLOAD_FOLDER = "downloads"
-
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+
 
 
 def download_song(query):
@@ -21,57 +22,100 @@ def download_song(query):
     )
 
 
-    ydl_opts = {
+    clients = [
+        "web",
+        "android",
+        "ios"
+    ]
 
-        "format": "bestaudio/best",
 
-        "outtmpl": output,
+    last_error = ""
 
-        "noplaylist": True,
 
-        "quiet": False,
+    for client in clients:
 
-        "js_runtimes": {
-            "deno": {}
-        },
+        try:
 
-        "extractor_args": {
-            "youtube": {
-                "player_client": [
-                    "android"
+            print("מנסה client:", client)
+
+
+            options = {
+
+                "format": "bestaudio/best",
+
+                "outtmpl": output,
+
+                "noplaylist": True,
+
+                "quiet": False,
+
+                "socket_timeout": 30,
+
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": [
+                            client
+                        ]
+                    }
+                },
+
+                "postprocessors": [
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "mp3",
+                        "preferredquality": "192"
+                    }
                 ]
             }
-        },
-
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192"
-            }
-        ]
-    }
 
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            with yt_dlp.YoutubeDL(options) as ydl:
 
-        info = ydl.extract_info(
-            "ytsearch1:" + query,
-            download=True
-        )
-
-
-        if "entries" in info:
-            info = info["entries"][0]
+                info = ydl.extract_info(
+                    "ytsearch1:" + query,
+                    download=True
+                )
 
 
-        title = info.get(
-            "title",
-            "שיר"
-        )
+            if "entries" in info:
+                info = info["entries"][0]
 
 
-    return file_id + ".mp3", title
+            title = info.get(
+                "title",
+                "שיר"
+            )
+
+
+            files = glob.glob(
+                DOWNLOAD_FOLDER + "/" + file_id + "*"
+            )
+
+
+            if files:
+
+                return (
+                    os.path.basename(files[0]),
+                    title
+                )
+
+
+        except Exception as e:
+
+            last_error = str(e)
+
+            print(
+                "נכשל:",
+                client,
+                last_error
+            )
+
+
+    raise Exception(
+        "לא הצלחתי להוריד: " + last_error[:200]
+    )
+
+
 
 
 
@@ -84,14 +128,19 @@ def chat():
 
         text = ""
 
+
         if "chat" in data:
+
             text = data["chat"]["messagePayload"]["message"]["text"]
 
+
         elif "message" in data:
+
             text = data["message"].get("text","")
 
 
         if not text:
+
             return jsonify({
                 "text":"❌ לא קיבלתי שם שיר"
             })
@@ -122,14 +171,18 @@ def chat():
 
     except Exception as e:
 
+
         print("ERROR:", e)
+
 
         return jsonify({
 
             "text":
-            "❌ שגיאה:\n" + str(e)[:500]
+            "❌ שגיאה:\n" + str(e)
 
         })
+
+
 
 
 
@@ -146,6 +199,7 @@ def downloads(filename):
 
 
 
+
 @app.route("/health")
 def health():
 
@@ -153,10 +207,13 @@ def health():
 
 
 
+
 @app.route("/", methods=["GET"])
 def home():
 
     return "Bot is running"
+
+
 
 
 
