@@ -5,85 +5,98 @@ import uuid
 
 app = Flask(__name__)
 
+
 DOWNLOAD_FOLDER = "downloads"
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
 
-def download_song(query):
+def download_song(search):
+
     file_id = str(uuid.uuid4())
 
-    filename = os.path.join(
+    output = os.path.join(
         DOWNLOAD_FOLDER,
-        file_id + ".mp3"
+        file_id + ".%(ext)s"
     )
 
     options = {
         "format": "bestaudio/best",
-        "outtmpl": filename.replace(".mp3", ""),
+        "outtmpl": output,
+        "noplaylist": True,
+
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
-                "preferredquality": "192",
+                "preferredquality": "192"
             }
-        ],
-        "noplaylist": True
+        ]
     }
 
-    with yt_dlp.YoutubeDL(options) as ydl:
-        ydl.download([
-            f"ytsearch1:{query}"
-        ])
 
-    return filename
+    with yt_dlp.YoutubeDL(options) as ydl:
+
+        info = ydl.extract_info(
+            f"ytsearch1:{search}",
+            download=True
+        )
+
+        title = info["entries"][0]["title"]
+
+
+    return file_id + ".mp3", title
+
 
 
 @app.route("/", methods=["POST"])
-def home():
+def chat_bot():
 
-    data = request.get_json()
-
-    print(data)
+    data = request.json
 
     try:
-        song_name = data["chat"]["messagePayload"]["message"]["text"]
 
-        print("Song:", song_name)
+        text = data["chat"]["messagePayload"]["message"]["text"]
 
-        file_path = download_song(song_name)
+        print("מחפש:", text)
+
+
+        filename, title = download_song(text)
+
+
+        url = request.host_url + "downloads/" + filename
+
 
         return jsonify({
-            "hostAppDataAction": {
-                "chatDataAction": {
-                    "createMessageAction": {
-                        "message": {
-                            "text":
-                            f"השיר ירד בהצלחה 🎵\nהקובץ נמצא: {file_path}"
-                        }
-                    }
-                }
-            }
+
+            "text":
+            f"🎵 מצאתי:\n{title}\n\nהורדה:\n{url}"
+
         })
+
 
     except Exception as e:
 
-        print("ERROR:", e)
+        print(e)
 
         return jsonify({
-            "hostAppDataAction": {
-                "chatDataAction": {
-                    "createMessageAction": {
-                        "message": {
-                            "text":
-                            f"שגיאה: {str(e)}"
-                        }
-                    }
-                }
-            }
+
+            "text":
+            "❌ הייתה שגיאה בהורדת השיר"
+
         })
 
 
+@app.route("/downloads/<file>")
+def files(file):
+
+    return open(
+        os.path.join(DOWNLOAD_FOLDER,file),
+        "rb"
+    ).read()
+
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0",port=8080)
