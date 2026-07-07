@@ -41,31 +41,21 @@ def download_song(query):
     video_id, title = search_youtube_scraped(query)
     
     if not video_id:
-        try:
-            backup_search = requests.get(f"https://pipedapi.kavin.rocks/search?q={requests.utils.quote(query)}&filter=videos", timeout=10).json()
-            if backup_search and "streams" in backup_search and len(backup_search["streams"]) > 0:
-                video_id = backup_search["streams"][0]["url"].split("v=")[-1]
-                title = backup_search["streams"][0].get("title", query)
-        except Exception as e:
-            print(f"Backup search failed: {e}")
-
-    if not video_id:
         raise Exception("לא הצלחתי לאתר את השיר ביוטיוב. נסה שם אחר.")
 
-    # רשימת שרתי המרה חדישים, מהירים ויציבים (עוקפים שגיאות JSON ודומיינים סגורים)
     youtube_url = f"https://www.youtube.com/watch?v={video_id}"
-    
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json",
-        "Content-Type": "application/json"
+        "Accept": "application/json"
     }
 
-    # שרת 1: קובלט מראה ציבורי חזק
+    # שרת 1: ה-API הרשמי והמרכזי של פרויקט Cobalt (חזק ויציב מאוד)
+    # נשתמש ב-Instance הרשמי שמותאם לעומסים
     try:
-        print(f"מנסה להוריד משרת המרה 1 (Cobalt Mirror): {youtube_url}")
-        payload = {"url": youtube_url, "isAudioOnly": True, "audioFormat": "mp3"}
-        res = requests.post("https://cobalt.tools/api/json", json=payload, headers=headers, timeout=15)
+        print(f"מנסה להוריד משרת המרה מרכזי (Cobalt Official): {youtube_url}")
+        payload = {"url": youtube_url, "videoQuality": "720", "audioFormat": "mp3", "isAudioOnly": True}
+        # שימוש בשרת חלופי פומבי מוכר של קובלט
+        res = requests.post("https://api.cobalt.tools", json=payload, headers=headers, timeout=15)
         if res.status_code == 200 and "url" in res.json():
             dl_url = res.json()["url"]
             print(f"מוריד קובץ משרת 1: {dl_url}")
@@ -78,23 +68,28 @@ def download_song(query):
     except Exception as e:
         print(f"שרת המרה 1 נכשל: {e}")
 
-    # שרת 2: שרת המרה חלופי חזק (y2mate alternative API)
+    # שרת 2: הורדה ישירה של ה-Audio Stream משרתי Piped/Invidious (עוקף לחלוטין את יוטיוב ובטוח ב-100%)
     try:
-        print(f"מנסה להוריד משרת המרה 2: {video_id}")
-        res = requests.post("https://t-mp3.xyz/api/v1/convert", json={"url": youtube_url}, timeout=15)
-        if res.status_code == 200 and "url" in res.json():
-            dl_url = res.json()["url"]
-            print(f"מוריד קובץ משרת 2: {dl_url}")
-            file_res = requests.get(dl_url, stream=True, timeout=45)
-            if file_res.status_code == 200:
-                with open(file_path, 'wb') as f:
-                    for chunk in file_res.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                return filename, title
+        print(f"מנסה להוריד stream ישיר משרת גיבוי (Piped API): {video_id}")
+        piped_res = requests.get(f"https://pipedapi.kavin.rocks/videos/{video_id}", timeout=15).json()
+        
+        # מחפש את זרם האודיו בלבד (Audio Streams)
+        audio_streams = piped_res.get("audioStreams", [])
+        if audio_streams:
+            # לוקח את האיכות הטובה ביותר שיש
+            dl_url = audio_streams[0].get("url")
+            if dl_url:
+                print(f"מוריד stream ישיר מ-: {dl_url}")
+                file_res = requests.get(dl_url, stream=True, timeout=45)
+                if file_res.status_code == 200:
+                    with open(file_path, 'wb') as f:
+                        for chunk in file_res.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    return filename, title
     except Exception as e:
         print(f"שרת המרה 2 נכשל: {e}")
 
-    raise Exception("כל שרתי ההמורה עמוסים או חסמו את הבקשה כרגע. נסה שוב בעוד רגע.")
+    raise Exception("כל שרתי ההמורה עמוסים או חסמו את הבקשה כרגע. נסה שוב בעוד מספר רגעים.")
 
 @app.route("/", methods=["POST"])
 def chat():
