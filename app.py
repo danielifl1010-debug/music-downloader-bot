@@ -1,21 +1,22 @@
 from flask import Flask, request, jsonify
-import requests
 
 app = Flask(__name__)
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route("/", methods=["POST"])
 def home():
-    if request.method == 'GET':
-        return "Bot is alive!", 200
+    data = request.get_json()
+    print(data)
 
-    # קבלת המידע מגוגל
-    data = request.get_json() or {}
-    text = data.get("chat", {}).get("messagePayload", {}).get("message", {}).get("text", "").strip()
+    text = data["chat"]["messagePayload"]["message"]["text"]
 
-    # שליחת תשובה מיידית בפורמט הרשמי של גוגל צ'אט
     return jsonify({
-        "text": f"עובד! הנה מה ששלחת לי: {text}\n\nבקרוב נוסיף מחדש את ההורדה הישירה."
+        "hostAppDataAction": {
+            "chatDataAction": {
+                "createMessageAction": {
+                    "message": {
+                        "text": f"קיבלתי: {text}"
+                    }
+                }
+            }
+        }
     })
-
-if __name__ == '__main__':
-    app.run(port=10000)
