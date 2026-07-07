@@ -3,12 +3,15 @@ import yt_dlp
 import os
 import uuid
 
+
 app = Flask(__name__)
+
 
 DOWNLOAD_FOLDER = "downloads"
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
+
 
 
 def download_song(query):
@@ -22,27 +25,59 @@ def download_song(query):
         filename
     )
 
+
     options = {
+
         "format": "bestaudio/best",
-        "outtmpl": filepath.replace(".mp3", ".%(ext)s"),
+
+        "outtmpl": filepath.replace(
+            ".mp3",
+            ".%(ext)s"
+        ),
+
         "noplaylist": True,
 
         "quiet": False,
 
+
         "extractor_args": {
+
             "youtube": {
-                "player_client": ["android"]
+
+                "player_client": [
+                    "web",
+                    "android"
+                ]
+
             }
+
         },
 
+
+        "http_headers": {
+
+            "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"
+
+        },
+
+
         "postprocessors": [
+
             {
+
                 "key": "FFmpegExtractAudio",
+
                 "preferredcodec": "mp3",
+
                 "preferredquality": "192"
+
             }
+
         ]
+
     }
+
 
 
     with yt_dlp.YoutubeDL(options) as ydl:
@@ -52,10 +87,21 @@ def download_song(query):
             download=True
         )
 
-        title = result["entries"][0]["title"]
+
+        if "entries" in result:
+
+            title = result["entries"][0]["title"]
+
+        else:
+
+            title = result["title"]
+
 
 
     return filename, title
+
+
+
 
 
 
@@ -66,31 +112,46 @@ def google_chat():
 
         data = request.json
 
+
         text = data["chat"]["messagePayload"]["message"]["text"]
 
+
         print("מחפש:", text)
+
 
 
         filename, title = download_song(text)
 
 
+
         url = request.host_url + "downloads/" + filename
 
 
+
         return jsonify({
+
             "text":
             f"🎵 {title}\n\n⬇️ הורדה:\n{url}"
+
         })
 
 
     except Exception as e:
 
+
         print("ERROR:", e)
 
+
         return jsonify({
+
             "text":
-            "❌ לא הצלחתי להוריד את השיר"
+            f"❌ שגיאה: {str(e)}"
+
         })
+
+
+
+
 
 
 
@@ -102,10 +163,15 @@ def download(filename):
         filename
     )
 
+
     return send_file(
         path,
         as_attachment=True
     )
+
+
+
+
 
 
 
