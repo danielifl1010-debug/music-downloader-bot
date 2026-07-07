@@ -1,14 +1,13 @@
 from flask import Flask, request, jsonify, send_file
-import yt_dlp
 import os
 import uuid
+import yt_dlp
 
 
 app = Flask(__name__)
 
 
 DOWNLOAD_FOLDER = "downloads"
-
 
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
@@ -25,7 +24,7 @@ def download_song(query):
     )
 
 
-    ydl_opts = {
+    options = {
 
         "format": "bestaudio/best",
 
@@ -33,44 +32,27 @@ def download_song(query):
 
         "noplaylist": True,
 
-        "cookiefile": "cookies.txt",
-
         "quiet": False,
 
-        "no_warnings": False,
-
-
         "extractor_args": {
-
             "youtube": {
-
                 "player_client": [
-                    "android"
+                    "web"
                 ]
-
             }
-
         },
 
-
         "postprocessors": [
-
             {
-
                 "key": "FFmpegExtractAudio",
-
                 "preferredcodec": "mp3",
-
                 "preferredquality": "192"
-
             }
-
         ]
-
     }
 
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL(options) as ydl:
 
         info = ydl.extract_info(
             "ytsearch1:" + query,
@@ -78,17 +60,11 @@ def download_song(query):
         )
 
 
-        entries = info.get(
-            "entries",
-            []
-        )
+        entries = info.get("entries", [])
 
 
         if not entries:
-
-            raise Exception(
-                "לא נמצא שיר"
-            )
+            raise Exception("לא נמצא שיר")
 
 
         title = entries[0].get(
@@ -97,17 +73,15 @@ def download_song(query):
         )
 
 
-    filename = file_id + ".mp3"
-
-
-    return filename, title
+    return file_id + ".mp3", title
 
 
 
 
 
 @app.route("/", methods=["POST"])
-def google_chat():
+def chat():
+
 
     try:
 
@@ -118,30 +92,24 @@ def google_chat():
 
 
         if "chat" in data:
-
             text = data["chat"]["messagePayload"]["message"]["text"]
 
 
         elif "message" in data:
+            text = data["message"].get("text", "")
 
-            text = data["message"].get(
-                "text",
-                ""
-            )
 
 
         if not text:
 
             return jsonify({
-
-                "text":
-                "❌ לא התקבל שם שיר"
-
+                "text": "❌ לא התקבל שם שיר"
             })
 
 
 
         print("מחפש:", text)
+
 
 
         filename, title = download_song(text)
@@ -166,6 +134,7 @@ def google_chat():
         })
 
 
+
     except Exception as e:
 
 
@@ -175,9 +144,7 @@ def google_chat():
         return jsonify({
 
             "text":
-            "❌ שגיאה:\n"
-            +
-            str(e)[:500]
+            "❌ שגיאה:\n" + str(e)[:500]
 
         })
 
@@ -187,18 +154,13 @@ def google_chat():
 
 
 @app.route("/downloads/<filename>")
-def downloads(filename):
+def download(filename):
+
 
     path = os.path.join(
         DOWNLOAD_FOLDER,
         filename
     )
-
-
-    if not os.path.exists(path):
-
-        return "Not found", 404
-
 
 
     return send_file(
@@ -224,8 +186,7 @@ def health():
 @app.route("/", methods=["GET"])
 def home():
 
-    return "Bot running"
-
+    return "Bot is running"
 
 
 
