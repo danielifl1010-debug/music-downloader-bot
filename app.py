@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, send_file
 import os
 import uuid
-import yt_dlp
+import subprocess
 
 
 app = Flask(__name__)
@@ -19,103 +19,80 @@ def download_song(query):
 
     file_id = str(uuid.uuid4())
 
-    output = os.path.join(
+    folder = os.path.join(
         DOWNLOAD_FOLDER,
-        file_id + ".%(ext)s"
+        file_id
+    )
+
+    os.makedirs(folder)
+
+
+
+    command = [
+        "spotdl",
+        "download",
+        query,
+        "--output",
+        folder
+    ]
+
+
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True
     )
 
 
-    options = {
-
-        "format": "bestaudio/best",
-
-        "outtmpl": output,
-
-        "noplaylist": True,
-
-        "quiet": False,
-
-        "no_warnings": False,
-
-
-        "extractor_args": {
-
-            "youtube": {
-
-                "player_client": [
-                    "android"
-                ]
-
-            }
-
-        },
-
-
-        "postprocessors": [
-
-            {
-
-                "key": "FFmpegExtractAudio",
-
-                "preferredcodec": "mp3",
-
-                "preferredquality": "192"
-
-            }
-
-        ]
-
-    }
+    print(result.stdout)
+    print(result.stderr)
 
 
 
-    with yt_dlp.YoutubeDL(options) as ydl:
+    mp3_file = None
 
 
-        info = ydl.extract_info(
-            "ytsearch1:" + query,
-            download=True
-        )
+    for root, dirs, files in os.walk(folder):
+
+        for file in files:
+
+            if file.endswith(".mp3"):
+
+                mp3_file = os.path.join(
+                    root,
+                    file
+                )
+
+                break
 
 
-        entries = info.get(
-            "entries",
-            []
-        )
 
+    if not mp3_file:
 
-        if not entries:
-
-            raise Exception(
-                "לא נמצאו תוצאות"
-            )
-
-
-        title = entries[0].get(
-            "title",
-            "Unknown"
+        raise Exception(
+            "לא נוצר קובץ MP3"
         )
 
 
 
-    filename = file_id + ".mp3"
+    filename = os.path.basename(
+        mp3_file
+    )
 
 
-    filepath = os.path.join(
+    new_path = os.path.join(
         DOWNLOAD_FOLDER,
         filename
     )
 
 
-    if not os.path.exists(filepath):
+    os.rename(
+        mp3_file,
+        new_path
+    )
 
-        raise Exception(
-            "הקובץ לא נוצר"
-        )
 
-
-    return filename, title
-
+    return filename
 
 
 
@@ -126,13 +103,7 @@ def chat():
 
     try:
 
-
         data = request.get_json()
-
-
-        print("REQUEST:")
-        print(data)
-
 
 
         text = ""
@@ -155,10 +126,7 @@ def chat():
         if not text:
 
             return jsonify({
-
-                "text":
-                "❌ לא התקבל שם שיר"
-
+                "text": "❌ לא התקבל שם שיר"
             })
 
 
@@ -167,7 +135,7 @@ def chat():
 
 
 
-        filename, title = download_song(text)
+        filename = download_song(text)
 
 
 
@@ -184,7 +152,7 @@ def chat():
         return jsonify({
 
             "text":
-            f"🎵 {title}\n\n⬇️ הורדה:\n{url}"
+            f"🎵 מוכן!\n\n⬇️ הורדה:\n{url}"
 
         })
 
@@ -193,9 +161,7 @@ def chat():
     except Exception as e:
 
 
-        print("ERROR:")
-        print(str(e))
-
+        print("ERROR:", e)
 
 
         return jsonify({
@@ -212,21 +178,13 @@ def chat():
 
 
 
-
 @app.route("/downloads/<filename>")
 def download(filename):
-
 
     path = os.path.join(
         DOWNLOAD_FOLDER,
         filename
     )
-
-
-    if not os.path.exists(path):
-
-        return "File not found", 404
-
 
 
     return send_file(
@@ -252,7 +210,7 @@ def health():
 @app.route("/", methods=["GET"])
 def home():
 
-    return "Bot is running"
+    return "Bot running"
 
 
 
