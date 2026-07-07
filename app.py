@@ -4,6 +4,7 @@ import uuid
 import glob
 import time
 import requests
+import re
 
 app = Flask(__name__)
 
@@ -18,65 +19,110 @@ def clean_old_files():
         except:
             pass
 
+def get_youtube_video_id(query):
+    """מנוע חילוץ מזהה וידאו אגרסיבי ויציב - מנסה מספר שיטות שונות"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    # שיטה 1: סקראפינג ישיר מיוטיוב מובייל (פחות נוטה להיחסם)
+    try:
+        url = f"https://m.youtube.com/results?search_query={requests.utils.quote(query)}"
+        res = requests.get(url, headers=headers, timeout=10)
+        video_ids = re.findall(r"\"videoId\":\"([a-zA-Z0-9_-]{11})\"", res.text)
+        if video_ids:
+            return video_ids[0]
+    except Exception as e:
+        print(f"Mobile scrape failed: {e}")
+
+    # שיטה 2: סקראפינג מיוטיוב דסקטופ (גיבוי)
+    try:
+        url = f"https://www.youtube.com/results?search_query={requests.utils.quote(query)}"
+        res = requests.get(url, headers=headers, timeout=10)
+        video_ids = re.findall(r"watch\?v=([a-zA-Z0-9_-]{11})", res.text)
+        if video_ids:
+            return video_ids[0]
+    except Exception as e:
+        print(f"Desktop scrape failed: {e}")
+
+    return None
+
 def download_song(query):
     clean_old_files()
     file_id = str(uuid.uuid4())
     filename = f"{file_id}.mp3"
     file_path = os.path.join(DOWNLOAD_FOLDER, filename)
     
+    # שלב 1: מציאת ה-Video ID של השיר
+    print(f"מאתר מזהה וידאו עבור: {query}")
+    video_id = get_youtube_video_id(query)
+    
+    if not video_id:
+        raise Exception("לא הצלחתי למצוא את השיר ביוטיוב. נסה שם מדויק יותר.")
+        
+    youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+    print(f"נמצא סרטון: {youtube_url} | מנסה להוריד...")
+
+    # שלב 2: שימוש בשרתי פרויקט Cobalt הרשמיים המבוזרים (עוקפים חסימות IP)
+    # ננסה מספר קצוות (Endpoints) שונים של Cobalt כדי להבטיח זמינות
+    cobalt_instances = [
+        "https://api.cobalt.tools",
+        "https://cobalt.api.v0.ru",
+        "https://api.cobalt.tools/api/json"
+    ]
+    
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "url": youtube_url,
+        "videoQuality": "720",
+        "audioFormat": "mp3",
+        "isAudioOnly": True
     }
 
-    # מנוע הורדה חלופי ויציב דרך SoundCloud - חסין לחלוטין לחסימות יוטיוב ב-Render
-    try:
-        print(f"מחפש ומוריד מ-SoundCloud עבור: {query}")
-        # שימוש ב-API ציבורי פתוח לחיפוש והורדה מ-SoundCloud
-        sc_api_url = f"https://scdownload.onrender.com/api/search?q={requests.utils.quote(query)}"
-        
-        # אם ה-API החיצוני הזה לא זמין, נשתמש בשרת המרה חלופי ל-SoundCloud/YouTube
-        search_res = requests.get(sc_api_url, headers=headers, timeout=12).json()
-        
-        if search_res and "tracks" in search_res and len(search_res["tracks"]) > 0:
-            track = search_res["tracks"][0]
-            title = track.get("title", query)
-            dl_url = track.get("download_url")
+    for instance in cobalt_instances:
+        try:
+            print(f"מנסה שרת המרה: {instance}")
             
-            if dl_url:
-                print(f"מוריד קובץ מ-SoundCloud: {dl_url}")
-                file_res = requests.get(dl_url, stream=True, headers=headers, timeout=45)
-                if file_res.status_code == 200:
-                    with open(file_path, 'wb') as f:
-                        for chunk in file_res.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                    return filename, title
-    except Exception as e:
-        print(f"ניסיון SoundCloud נכשל: {e}")
+            # תיקון קטן לכתובת במידת הצורך
+            endpoint = instance if instance.endswith("/json") else f"{instance}/"
+            if not endpoint.endswith("/json") and not endpoint.endswith("/"): endpoint += "/api/json"
+            
+            res = requests.post(instance if "api/json" in instance else f"{instance}", json=payload, headers=headers, timeout=15)
+            
+            if res.status_code == 200:
+                res_data = res.json()
+                dl_url = res_data.get("url")
+                
+                if dl_url:
+                    print(f"ההמרה הצליחה! מוריד קובץ זרם מ-: {dl_url}")
+                    file_res = requests.get(dl_url, stream=True, timeout=60)
+                    if file_res.status_code == 200:
+                        with open(file_path, 'wb') as f:
+                            for chunk in file_res.iter_content(chunk_size=8192):
+                                f.write(chunk)
+                        return filename, query
+        except Exception as e:
+            print(f"שרת המרה {instance} נכשל: {e}")
+            continue
 
-    # מנוע גיבוי 2: שרת המרה חלופי ליוטיוב (Invidious Video-to-Audio Stream) דרך Instance אירופאי יציב
+    # מנוע גיבוי אחרון: שרת API ייעודי להורדות ישירות ללא JSON מורכב
     try:
-        print(f"מנסה מנוע גיבוי - חיפוש וידאו ישיר...")
-        search_url = f"https://invidious.io.lol/api/v1/search?q={requests.utils.quote(query)}&type=video"
-        videos = requests.get(search_url, headers=headers, timeout=10).json()
-        
-        if videos and len(videos) > 0:
-            video_id = videos[0].get("videoId")
-            title = videos[0].get("title", query)
-            
-            # בקשת זרם האודיו הישיר מהשרת ללא המרה
-            stream_url = f"https://invidious.io.lol/latest/bypass/{video_id}?audio=1"
-            print(f"מוריד stream ישיר משרת גיבוי: {stream_url}")
-            
-            file_res = requests.get(stream_url, stream=True, headers=headers, timeout=45)
-            if file_res.status_code == 200:
-                with open(file_path, 'wb') as f:
-                    for chunk in file_res.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                return filename, title
+        print("מנסה מנוע גיבוי ישיר (Y2Mate API Proxy)...")
+        backup_url = f"https://server2.mp3q.cc/api/v1/download?url={requests.utils.quote(youtube_url)}"
+        file_res = requests.get(backup_url, stream=True, timeout=45)
+        if file_res.status_code == 200 and len(file_res.content) > 50000: # לוודא שזה לא דף שגיאה קטן
+            with open(file_path, 'wb') as f:
+                f.write(file_res.content)
+            return filename, query
     except Exception as e:
-        print(f"מנוע גיבוי 2 נכשל: {e}")
+        print(f"מנוע גיבוי ישיר נכשל: {e}")
 
-    raise Exception("כל מנועי ההורדה (SoundCloud ויוטיוב) עמוסים כרגע. נסה שיר אחר או נסה שוב מאוחר יותר.")
+    raise Exception("כל שרתי ההורדה וההמרה חסמו את הבקשה מהשרת הנוכחי. נסה שוב בעוד דקה.")
 
 @app.route("/", methods=["POST"])
 def chat():
