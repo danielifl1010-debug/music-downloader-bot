@@ -39,27 +39,46 @@ def download_song(query):
 
         "quiet": False,
 
+        "remote_components": [
+            "ejs:github"
+        ],
+
+
         "extractor_args": {
+
             "youtube": {
+
                 "player_client": [
-                    "android",
-                    "web"
+                    "android"
                 ]
+
             }
+
         },
+
 
         "http_headers": {
+
             "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36"
+
         },
 
+
         "postprocessors": [
+
             {
+
                 "key": "FFmpegExtractAudio",
+
                 "preferredcodec": "mp3",
+
                 "preferredquality": "192"
+
             }
+
         ]
+
     }
 
 
@@ -73,12 +92,16 @@ def download_song(query):
 
 
         if "entries" in result:
+
             title = result["entries"][0]["title"]
+
         else:
+
             title = result["title"]
 
 
     return filename, title
+
 
 
 
@@ -93,7 +116,9 @@ def google_chat():
 
         text = data["chat"]["messagePayload"]["message"]["text"]
 
+
         print("מחפש:", text)
+
 
 
         filename, title = download_song(text)
@@ -103,9 +128,12 @@ def google_chat():
 
 
         return jsonify({
+
             "text":
             f"🎵 {title}\n\n⬇️ הורדה:\n{url}"
+
         })
+
 
 
     except Exception as e:
@@ -114,10 +142,11 @@ def google_chat():
 
 
         return jsonify({
+
             "text":
-            "❌ לא הצלחתי להוריד את השיר.\n\n"
-            "סיבת השגיאה:\n" +
-            str(e)[:400]
+            "❌ הייתה שגיאה בהורדה:\n\n"
+            + str(e)[:500]
+
         })
 
 
@@ -143,10 +172,12 @@ def download(filename):
 
 
 
+
 @app.route("/health")
 def health():
 
     return "OK"
+
 
 
 
