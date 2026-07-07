@@ -3,9 +3,7 @@ import yt_dlp
 import os
 import uuid
 
-
 app = Flask(__name__)
-
 
 DOWNLOAD_FOLDER = "downloads"
 
@@ -13,151 +11,101 @@ if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
 
-
 def download_song(query):
 
     file_id = str(uuid.uuid4())
 
-    output = os.path.join(
+    filename = file_id + ".mp3"
+
+    filepath = os.path.join(
         DOWNLOAD_FOLDER,
-        file_id + ".%(ext)s"
+        filename
     )
 
-
-    ydl_opts = {
-
+    options = {
         "format": "bestaudio/best",
-
-        "outtmpl": output,
-
+        "outtmpl": filepath.replace(".mp3", ".%(ext)s"),
         "noplaylist": True,
 
-        "default_search": "ytsearch1",
-
+        "quiet": False,
 
         "extractor_args": {
             "youtube": {
-                "player_client": [
-                    "android"
-                ]
+                "player_client": ["android"]
             }
         },
-
-
-        "http_headers": {
-
-            "User-Agent":
-            "Mozilla/5.0 (Linux; Android 10)"
-        },
-
 
         "postprocessors": [
-
             {
-
                 "key": "FFmpegExtractAudio",
-
                 "preferredcodec": "mp3",
-
                 "preferredquality": "192"
-
             }
-
         ]
-
     }
 
 
+    with yt_dlp.YoutubeDL(options) as ydl:
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-
-        info = ydl.extract_info(
-            query,
+        result = ydl.extract_info(
+            "ytsearch1:" + query,
             download=True
         )
 
-
-        if "entries" in info:
-
-            title = info["entries"][0]["title"]
-
-        else:
-
-            title = info["title"]
+        title = result["entries"][0]["title"]
 
 
-
-    return file_id + ".mp3", title
-
-
+    return filename, title
 
 
 
 @app.route("/", methods=["POST"])
-def chat_bot():
+def google_chat():
 
     try:
 
         data = request.json
 
-
         text = data["chat"]["messagePayload"]["message"]["text"]
 
-
         print("מחפש:", text)
-
 
 
         filename, title = download_song(text)
 
 
-
         url = request.host_url + "downloads/" + filename
 
 
-
         return jsonify({
-
             "text":
             f"🎵 {title}\n\n⬇️ הורדה:\n{url}"
-
         })
 
 
     except Exception as e:
 
-
         print("ERROR:", e)
 
-
         return jsonify({
-
             "text":
-            f"❌ שגיאה: {str(e)}"
-
+            "❌ לא הצלחתי להוריד את השיר"
         })
 
 
 
-
-
-
 @app.route("/downloads/<filename>")
-def download_file(filename):
+def download(filename):
 
     path = os.path.join(
         DOWNLOAD_FOLDER,
         filename
     )
 
-
     return send_file(
         path,
         as_attachment=True
     )
-
-
-
 
 
 
