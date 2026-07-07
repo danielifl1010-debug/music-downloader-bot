@@ -1,5 +1,8 @@
 #!/bin/bash
 
-spotdl --download-deno || true
+apt-get update -y
+apt-get install -y ffmpeg
 
-gunicorn app:app --timeout 300
+pip install -U yt-dlp
+
+gunicorn app:app --bind 0.0.0.0:$PORT
