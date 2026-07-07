@@ -11,6 +11,9 @@ app = Flask(__name__)
 DOWNLOAD_FOLDER = "downloads"
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
+# המפתח האישי שלך מתוך צילום המסך שהעלית
+RAPIDAPI_KEY = "d4a277a3damsh6284a8def8883c3p1e1966jsn5c4606e59304"
+
 def clean_old_files():
     for old_file in glob.glob(DOWNLOAD_FOLDER + "/*"):
         try:
@@ -20,12 +23,18 @@ def clean_old_files():
             pass
 
 def get_youtube_video_id(query):
-    """מנוע חילוץ מזהה וידאו אגרסיבי ויציב - מנסה מספר שיטות שונות"""
+    """מוציא את מזהה הוידאו מיוטיוב ללא חסימות"""
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
-    # שיטה 1: סקראפינג ישיר מיוטיוב מובייל (פחות נוטה להיחסם)
+    # ניסיון 1: בדיקה אם המשתמש שלח ישירות קישור של יוטיוב
+    if "youtube.com" in query or "youtu.be" in query:
+        found = re.findall(r"(?:v=|\/)([a-zA-Z0-9_-]{11})", query)
+        if found:
+            return found[0]
+
+    # ניסיון 2: חיפוש טקסטואלי במובייל יוטיוב
     try:
         url = f"https://m.youtube.com/results?search_query={requests.utils.quote(query)}"
         res = requests.get(url, headers=headers, timeout=10)
@@ -33,9 +42,9 @@ def get_youtube_video_id(query):
         if video_ids:
             return video_ids[0]
     except Exception as e:
-        print(f"Mobile scrape failed: {e}")
+        print(f"חיפוש מובייל נכשל: {e}")
 
-    # שיטה 2: סקראפינג מיוטיוב דסקטופ (גיבוי)
+    # ניסיון 3: חיפוש בדסקטופ יוטיוב
     try:
         url = f"https://www.youtube.com/results?search_query={requests.utils.quote(query)}"
         res = requests.get(url, headers=headers, timeout=10)
@@ -43,7 +52,7 @@ def get_youtube_video_id(query):
         if video_ids:
             return video_ids[0]
     except Exception as e:
-        print(f"Desktop scrape failed: {e}")
+        print(f"חיפוש דסקטופ נכשל: {e}")
 
     return None
 
@@ -53,104 +62,77 @@ def download_song(query):
     filename = f"{file_id}.mp3"
     file_path = os.path.join(DOWNLOAD_FOLDER, filename)
     
-    # שלב 1: מציאת ה-Video ID של השיר
-    print(f"מאתר מזהה וידאו עבור: {query}")
+    print(f"מתחיל תהליך איתור עבור השאילתה: {query}")
     video_id = get_youtube_video_id(query)
     
     if not video_id:
-        raise Exception("לא הצלחתי למצוא את השיר ביוטיוב. נסה שם מדויק יותר.")
+        raise Exception("לא הצלחתי למצוא את השיר ביוטיוב. נסה שם אחר או קישור ישיר.")
         
-    youtube_url = f"https://www.youtube.com/watch?v={video_id}"
-    print(f"נמצא סרטון: {youtube_url} | מנסה להוריד...")
+    print(f"נמצא מזהה וידאו: {video_id}. פונה ל-RapidAPI...")
 
-    # שלב 2: שימוש בשרתי פרויקט Cobalt הרשמיים המבוזרים (עוקפים חסימות IP)
-    # ננסה מספר קצוות (Endpoints) שונים של Cobalt כדי להבטיח זמינות
-    cobalt_instances = [
-        "https://api.cobalt.tools",
-        "https://cobalt.api.v0.ru",
-        "https://api.cobalt.tools/api/json"
-    ]
+    # פנייה לשרת המרה יציב ומקצועי באמצעות המפתח שלך
+    url = "https://youtube-to-mp315.p.rapidapi.com/download"
+    querystring = {"id": video_id}
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "url": youtube_url,
-        "videoQuality": "720",
-        "audioFormat": "mp3",
-        "isAudioOnly": True
+        "X-RapidAPI-Key": RAPIDAPI_KEY,
+        "X-RapidAPI-Host": "youtube-to-mp315.p.rapidapi.com"
     }
 
-    for instance in cobalt_instances:
-        try:
-            print(f"מנסה שרת המרה: {instance}")
-            
-            # תיקון קטן לכתובת במידת הצורך
-            endpoint = instance if instance.endswith("/json") else f"{instance}/"
-            if not endpoint.endswith("/json") and not endpoint.endswith("/"): endpoint += "/api/json"
-            
-            res = requests.post(instance if "api/json" in instance else f"{instance}", json=payload, headers=headers, timeout=15)
-            
-            if res.status_code == 200:
-                res_data = res.json()
-                dl_url = res_data.get("url")
-                
-                if dl_url:
-                    print(f"ההמרה הצליחה! מוריד קובץ זרם מ-: {dl_url}")
-                    file_res = requests.get(dl_url, stream=True, timeout=60)
-                    if file_res.status_code == 200:
-                        with open(file_path, 'wb') as f:
-                            for chunk in file_res.iter_content(chunk_size=8192):
-                                f.write(chunk)
-                        return filename, query
-        except Exception as e:
-            print(f"שרת המרה {instance} נכשל: {e}")
-            continue
-
-    # מנוע גיבוי אחרון: שרת API ייעודי להורדות ישירות ללא JSON מורכב
     try:
-        print("מנסה מנוע גיבוי ישיר (Y2Mate API Proxy)...")
-        backup_url = f"https://server2.mp3q.cc/api/v1/download?url={requests.utils.quote(youtube_url)}"
-        file_res = requests.get(backup_url, stream=True, timeout=45)
-        if file_res.status_code == 200 and len(file_res.content) > 50000: # לוודא שזה לא דף שגיאה קטן
-            with open(file_path, 'wb') as f:
-                f.write(file_res.content)
-            return filename, query
+        response = requests.get(url, headers=headers, params=querystring, timeout=25)
+        if response.status_code == 200:
+            res_data = response.json()
+            dl_url = res_data.get("downloadUrl") or res_data.get("url") or res_data.get("link")
+            
+            if dl_url:
+                print(f"ההמרה הצליחה! מוריד את הקובץ משרת האחסון: {dl_url}")
+                file_res = requests.get(dl_url, stream=True, timeout=60)
+                if file_res.status_code == 200:
+                    with open(file_path, 'wb') as f:
+                        for chunk in file_res.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    return filename, query
+            else:
+                print(f"התקבלה תשובה מ-RapidAPI אך ללא לינק תקין: {res_data}")
+        else:
+            print(f"שגיאת שרת RapidAPI, קוד סטטוס: {response.status_code}")
     except Exception as e:
-        print(f"מנוע גיבוי ישיר נכשל: {e}")
+        print(f"הפנייה ל-RapidAPI נכשלה לחלוטין: {e}")
 
-    raise Exception("כל שרתי ההורדה וההמרה חסמו את הבקשה מהשרת הנוכחי. נסה שוב בעוד דקה.")
+    raise Exception("שרת ההמורה המקצועי לא זמין כרגע. נסה שוב בעוד דקה.")
 
 @app.route("/", methods=["POST"])
 def chat():
     try:
-        data = request.json or {}
+        data = request.get_json() or {}
         text = ""
 
+        # שליפת הטקסט בהתאם למבנה ההודעות שמגיע מהצ'אט שלך
         if "chat" in data:
-            text = data["chat"]["messagePayload"]["message"]["text"]
+            text = data["chat"].get("messagePayload", {}).get("message", {}).get("text", "")
         elif "message" in data:
             text = data["message"].get("text", "")
+        else:
+            text = data.get("text", "")
 
         if not text:
-            return jsonify({"text": "❌ לא קיבלתי שם שיר"})
+            return jsonify({"text": "❌ לא התקבל שם שיר או קישור תקין."})
 
-        print("בקשת הורדה עבור:", text)
+        print(f"התקבלה הודעה בצ'אט: '{text}' - מתחיל הורדה...")
         filename, title = download_song(text)
 
+        # קישור ההורדה ישירות משרת ה-Render שלך
         url = f"https://music-downloader-bot-7tve.onrender.com/downloads/{filename}"
 
         return jsonify({
-            "text": f"🎵 **{title}**\n\n⬇️ השיר מוכן! לחץ על הקישור להורדה:\n{url}"
+            "text": f"🎵 **הורדת השיר הושלמה!**\n\nלחץ על הקישור הבא כדי להוריד:\n{url}"
         })
 
     except Exception as e:
-        print("ERROR:", e)
+        print(f"שגיאה כללית באפליקציה: {e}")
         return jsonify({
-            "text": f"❌ שגיאה:\n{str(e)[:500]}"
+            "text": f"❌ שגיאה זמנית בהורדת השיר:\n{str(e)[:200]}"
         })
 
 @app.route("/downloads/<filename>")
@@ -166,7 +148,7 @@ def health():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Bot is running"
+    return "Bypass Downloader is live!"
 
 if __name__ == "__main__":
     app.run(
