@@ -19,7 +19,7 @@ def download_song(query):
 
     file_id = str(uuid.uuid4())
 
-    output_template = os.path.join(
+    output = os.path.join(
         DOWNLOAD_FOLDER,
         file_id + ".%(ext)s"
     )
@@ -29,29 +29,40 @@ def download_song(query):
 
         "format": "bestaudio/best",
 
-        "outtmpl": output_template,
+        "outtmpl": output,
 
         "noplaylist": True,
+
+        "cookiefile": "cookies.txt",
 
         "quiet": False,
 
         "no_warnings": False,
 
+
         "extractor_args": {
+
             "youtube": {
+
                 "player_client": [
                     "android"
                 ]
+
             }
+
         },
 
 
         "postprocessors": [
 
             {
+
                 "key": "FFmpegExtractAudio",
+
                 "preferredcodec": "mp3",
+
                 "preferredquality": "192"
+
             }
 
         ]
@@ -59,16 +70,15 @@ def download_song(query):
     }
 
 
-
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
-        result = ydl.extract_info(
+        info = ydl.extract_info(
             "ytsearch1:" + query,
             download=True
         )
 
 
-        entries = result.get(
+        entries = info.get(
             "entries",
             []
         )
@@ -77,7 +87,7 @@ def download_song(query):
         if not entries:
 
             raise Exception(
-                "לא נמצאו תוצאות לשיר הזה"
+                "לא נמצא שיר"
             )
 
 
@@ -104,12 +114,6 @@ def google_chat():
         data = request.get_json()
 
 
-        print("Google request:")
-        print(data)
-
-
-
-        # תמיכה בפורמט Google Chat החדש
         text = ""
 
 
@@ -140,12 +144,17 @@ def google_chat():
         print("מחפש:", text)
 
 
-
         filename, title = download_song(text)
 
 
 
-        url = request.host_url + "downloads/" + filename
+        url = (
+            request.host_url
+            +
+            "downloads/"
+            +
+            filename
+        )
 
 
 
@@ -157,19 +166,18 @@ def google_chat():
         })
 
 
-
     except Exception as e:
 
 
-        print("ERROR:")
-        print(str(e))
+        print("ERROR:", e)
 
 
         return jsonify({
 
             "text":
-            "❌ שגיאה:\n\n"
-            + str(e)[:500]
+            "❌ שגיאה:\n"
+            +
+            str(e)[:500]
 
         })
 
@@ -189,7 +197,7 @@ def downloads(filename):
 
     if not os.path.exists(path):
 
-        return "File not found", 404
+        return "Not found", 404
 
 
 
@@ -216,7 +224,7 @@ def health():
 @app.route("/", methods=["GET"])
 def home():
 
-    return "Music downloader bot is running"
+    return "Bot running"
 
 
 
