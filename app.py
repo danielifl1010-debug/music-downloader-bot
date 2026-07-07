@@ -45,8 +45,8 @@ def download_song(query):
             "youtube": {
 
                 "player_client": [
-                    "web",
-                    "android"
+                    "android",
+                    "web"
                 ]
 
             }
@@ -54,10 +54,16 @@ def download_song(query):
         },
 
 
+        "nocheckcertificate": True,
+
+
+        "ignoreerrors": False,
+
+
         "http_headers": {
 
             "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
 
         },
 
@@ -104,7 +110,6 @@ def download_song(query):
 
 
 
-
 @app.route("/", methods=["POST"])
 def google_chat():
 
@@ -112,20 +117,15 @@ def google_chat():
 
         data = request.json
 
-
         text = data["chat"]["messagePayload"]["message"]["text"]
 
-
         print("מחפש:", text)
-
 
 
         filename, title = download_song(text)
 
 
-
         url = request.host_url + "downloads/" + filename
-
 
 
         return jsonify({
@@ -138,17 +138,15 @@ def google_chat():
 
     except Exception as e:
 
-
         print("ERROR:", e)
 
 
         return jsonify({
 
             "text":
-            f"❌ שגיאה: {str(e)}"
+            f"❌ שגיאה בהורדה: {str(e)}"
 
         })
-
 
 
 
@@ -169,6 +167,15 @@ def download(filename):
         as_attachment=True
     )
 
+
+
+
+
+
+@app.route("/health")
+def health():
+
+    return "OK"
 
 
 
