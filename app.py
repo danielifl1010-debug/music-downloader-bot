@@ -9,6 +9,7 @@ app = Flask(__name__)
 
 DOWNLOAD_FOLDER = "downloads"
 
+
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
@@ -18,11 +19,9 @@ def download_song(query):
 
     file_id = str(uuid.uuid4())
 
-    filename = file_id + ".mp3"
-
-    filepath = os.path.join(
+    output_template = os.path.join(
         DOWNLOAD_FOLDER,
-        filename
+        file_id + ".%(ext)s"
     )
 
 
@@ -30,51 +29,29 @@ def download_song(query):
 
         "format": "bestaudio/best",
 
-        "outtmpl": filepath.replace(
-            ".mp3",
-            ".%(ext)s"
-        ),
+        "outtmpl": output_template,
 
         "noplaylist": True,
 
         "quiet": False,
 
-        "remote_components": [
-            "ejs:github"
-        ],
-
+        "no_warnings": False,
 
         "extractor_args": {
-
             "youtube": {
-
                 "player_client": [
                     "android"
                 ]
-
             }
-
-        },
-
-
-        "http_headers": {
-
-            "User-Agent":
-            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36"
-
         },
 
 
         "postprocessors": [
 
             {
-
                 "key": "FFmpegExtractAudio",
-
                 "preferredcodec": "mp3",
-
                 "preferredquality": "192"
-
             }
 
         ]
@@ -91,17 +68,29 @@ def download_song(query):
         )
 
 
-        if "entries" in result:
+        entries = result.get(
+            "entries",
+            []
+        )
 
-            title = result["entries"][0]["title"]
 
-        else:
+        if not entries:
 
-            title = result["title"]
+            raise Exception(
+                "לא נמצאו תוצאות לשיר הזה"
+            )
+
+
+        title = entries[0].get(
+            "title",
+            "Unknown"
+        )
+
+
+    filename = file_id + ".mp3"
 
 
     return filename, title
-
 
 
 
@@ -112,9 +101,40 @@ def google_chat():
 
     try:
 
-        data = request.json
+        data = request.get_json()
 
-        text = data["chat"]["messagePayload"]["message"]["text"]
+
+        print("Google request:")
+        print(data)
+
+
+
+        # תמיכה בפורמט Google Chat החדש
+        text = ""
+
+
+        if "chat" in data:
+
+            text = data["chat"]["messagePayload"]["message"]["text"]
+
+
+        elif "message" in data:
+
+            text = data["message"].get(
+                "text",
+                ""
+            )
+
+
+        if not text:
+
+            return jsonify({
+
+                "text":
+                "❌ לא התקבל שם שיר"
+
+            })
+
 
 
         print("מחפש:", text)
@@ -124,7 +144,9 @@ def google_chat():
         filename, title = download_song(text)
 
 
+
         url = request.host_url + "downloads/" + filename
+
 
 
         return jsonify({
@@ -138,13 +160,15 @@ def google_chat():
 
     except Exception as e:
 
-        print("ERROR:", str(e))
+
+        print("ERROR:")
+        print(str(e))
 
 
         return jsonify({
 
             "text":
-            "❌ הייתה שגיאה בהורדה:\n\n"
+            "❌ שגיאה:\n\n"
             + str(e)[:500]
 
         })
@@ -155,12 +179,18 @@ def google_chat():
 
 
 @app.route("/downloads/<filename>")
-def download(filename):
+def downloads(filename):
 
     path = os.path.join(
         DOWNLOAD_FOLDER,
         filename
     )
+
+
+    if not os.path.exists(path):
+
+        return "File not found", 404
+
 
 
     return send_file(
@@ -173,10 +203,20 @@ def download(filename):
 
 
 
-@app.route("/health")
+@app.route("/health", methods=["GET", "HEAD"])
 def health():
 
     return "OK"
+
+
+
+
+
+
+@app.route("/", methods=["GET"])
+def home():
+
+    return "Music downloader bot is running"
 
 
 
