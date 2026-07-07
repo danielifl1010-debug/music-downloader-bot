@@ -1,5 +1,3 @@
-Flask
+Flask==3.0.3
+gunicorn==22.0.0
 yt-dlp
-requests
-google-auth
-gunicorn
