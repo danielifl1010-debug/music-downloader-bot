@@ -11,8 +11,8 @@ app = Flask(__name__)
 DOWNLOAD_FOLDER = "downloads"
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-# המפתח האישי שלך מתוך צילום המסך שהעלית
-RAPIDAPI_KEY = "d4a277a3damsh6284a8def8883c3p1e1966jsn5c4606e59304"
+# שליחת המפתח בצורה מאובטחת ממשתני הסביבה של Render
+RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY")
 
 def clean_old_files():
     for old_file in glob.glob(DOWNLOAD_FOLDER + "/*"):
@@ -23,116 +23,124 @@ def clean_old_files():
             pass
 
 def get_youtube_video_id(query):
-    """מוציא את מזהה הוידאו מיוטיוב ללא חסימות"""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
-    
-    # ניסיון 1: בדיקה אם המשתמש שלח ישירות קישור של יוטיוב
+
+    # אם המשתמש שלח קישור ישיר
     if "youtube.com" in query or "youtu.be" in query:
         found = re.findall(r"(?:v=|\/)([a-zA-Z0-9_-]{11})", query)
         if found:
             return found[0]
 
-    # ניסיון 2: חיפוש טקסטואלי במובייל יוטיוב
+    # חיפוש טקסטואלי במובייל יוטיוב (חסין ועוקף חסימות)
     try:
-        url = f"https://m.youtube.com/results?search_query={requests.utils.quote(query)}"
+        url = "https://m.youtube.com/results?search_query=" + requests.utils.quote(query)
         res = requests.get(url, headers=headers, timeout=10)
-        video_ids = re.findall(r"\"videoId\":\"([a-zA-Z0-9_-]{11})\"", res.text)
-        if video_ids:
-            return video_ids[0]
+        ids = re.findall(r'"videoId":"([a-zA-Z0-9_-]{11})"', res.text)
+        if ids:
+            return ids[0]
     except Exception as e:
-        print(f"חיפוש מובייל נכשל: {e}")
-
-    # ניסיון 3: חיפוש בדסקטופ יוטיוב
-    try:
-        url = f"https://www.youtube.com/results?search_query={requests.utils.quote(query)}"
-        res = requests.get(url, headers=headers, timeout=10)
-        video_ids = re.findall(r"watch\?v=([a-zA-Z0-9_-]{11})", res.text)
-        if video_ids:
-            return video_ids[0]
-    except Exception as e:
-        print(f"חיפוש דסקטופ נכשל: {e}")
+        print("חיפוש מובייל נכשל:", e)
 
     return None
 
 def download_song(query):
     clean_old_files()
-    file_id = str(uuid.uuid4())
-    filename = f"{file_id}.mp3"
-    file_path = os.path.join(DOWNLOAD_FOLDER, filename)
-    
-    print(f"מתחיל תהליך איתור עבור השאילתה: {query}")
-    video_id = get_youtube_video_id(query)
-    
-    if not video_id:
-        raise Exception("לא הצלחתי למצוא את השיר ביוטיוב. נסה שם אחר או קישור ישיר.")
-        
-    print(f"נמצא מזהה וידאו: {video_id}. פונה ל-RapidAPI...")
 
-    # פנייה לשרת המרה יציב ומקצועי באמצעות המפתח שלך
-    url = "https://youtube-to-mp315.p.rapidapi.com/download"
-    querystring = {"id": video_id}
+    if not RAPIDAPI_KEY:
+        raise Exception("חסר RAPIDAPI_KEY בהגדרות Render")
+
+    video_id = get_youtube_video_id(query)
+
+    if not video_id:
+        raise Exception("לא הצלחתי למצוא את השיר ביוטיוב. נסה שם אחר.")
+
+    print("Video ID נמצא:", video_id)
+
+    # עדכון ל-API החדש והיציב ביותר (youtube-mp36)
+    api_url = "https://youtube-mp36.p.rapidapi.com/dl"
     
     headers = {
         "X-RapidAPI-Key": RAPIDAPI_KEY,
-        "X-RapidAPI-Host": "youtube-to-mp315.p.rapidapi.com"
+        "X-RapidAPI-Host": "youtube-mp36.p.rapidapi.com"
     }
 
     try:
-        response = requests.get(url, headers=headers, params=querystring, timeout=25)
-        if response.status_code == 200:
-            res_data = response.json()
-            dl_url = res_data.get("downloadUrl") or res_data.get("url") or res_data.get("link")
-            
-            if dl_url:
-                print(f"ההמרה הצליחה! מוריד את הקובץ משרת האחסון: {dl_url}")
-                file_res = requests.get(dl_url, stream=True, timeout=60)
-                if file_res.status_code == 200:
-                    with open(file_path, 'wb') as f:
-                        for chunk in file_res.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                    return filename, query
-            else:
-                print(f"התקבלה תשובה מ-RapidAPI אך ללא לינק תקין: {res_data}")
-        else:
-            print(f"שגיאת שרת RapidAPI, קוד סטטוס: {response.status_code}")
-    except Exception as e:
-        print(f"הפנייה ל-RapidAPI נכשלה לחלוטין: {e}")
+        response = requests.get(
+            api_url,
+            headers=headers,
+            params={"id": video_id},
+            timeout=30
+        )
 
-    raise Exception("שרת ההמורה המקצועי לא זמין כרגע. נסה שוב בעוד דקה.")
+        if response.status_code != 200:
+            raise Exception(f"RapidAPI error {response.status_code}")
+
+        try:
+            data = response.json()
+        except:
+            raise Exception("RapidAPI לא החזיר JSON תקין")
+
+        # ה-API הזה מחזיר את הקישור תחת המפתח 'link'
+        download_url = data.get("link")
+
+        if not download_url:
+            # אם הסטטוס אומר שהוא עדיין מעבד, ניתן הודעה ידידותית
+            if data.get("msg") or data.get("status") == "processing":
+                raise Exception("השרת מעבד את השיר כרגע. נסה שוב בעוד כמה שניות.")
+            raise Exception("לא נמצא קישור הורדה בתשובת השרת")
+
+        print("מוריד מקישור ישיר:", download_url)
+
+        file_id = str(uuid.uuid4())
+        filename = file_id + ".mp3"
+        path = os.path.join(DOWNLOAD_FOLDER, filename)
+
+        file_response = requests.get(download_url, stream=True, timeout=60)
+
+        if file_response.status_code != 200:
+            raise Exception("שגיאה בהורדת קובץ האודיו משרת האחסון")
+
+        # שמירת הקובץ בשרת בלוקים-בלוקים (Stream) כדי לא להעמיס על הזיכרון
+        with open(path, "wb") as f:
+            for chunk in file_response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+
+        return filename
+
+    except Exception as e:
+        print("DOWNLOAD ERROR:", e)
+        raise e
 
 @app.route("/", methods=["POST"])
 def chat():
     try:
-        data = request.get_json() or {}
+        data = request.json or {}
         text = ""
 
-        # שליפת הטקסט בהתאם למבנה ההודעות שמגיע מהצ'אט שלך
         if "chat" in data:
-            text = data["chat"].get("messagePayload", {}).get("message", {}).get("text", "")
+            text = data.get("chat", {}).get("messagePayload", {}).get("message", {}).get("text", "")
         elif "message" in data:
             text = data["message"].get("text", "")
-        else:
-            text = data.get("text", "")
 
         if not text:
-            return jsonify({"text": "❌ לא התקבל שם שיר או קישור תקין."})
+            return jsonify({"text": "❌ לא קיבלתי שם שיר"})
 
-        print(f"התקבלה הודעה בצ'אט: '{text}' - מתחיל הורדה...")
-        filename, title = download_song(text)
+        print("בקשה שהתקבלה:", text)
+        filename = download_song(text)
 
-        # קישור ההורדה ישירות משרת ה-Render שלך
-        url = f"https://music-downloader-bot-7tve.onrender.com/downloads/{filename}"
+        url = "https://music-downloader-bot-7tve.onrender.com/downloads/" + filename
 
         return jsonify({
-            "text": f"🎵 **הורדת השיר הושלמה!**\n\nלחץ על הקישור הבא כדי להוריד:\n{url}"
+            "text": "🎵 **השיר מוכן!**\n\n⬇️ לחץ על הקישור הבא להורדה:\n" + url
         })
 
     except Exception as e:
-        print(f"שגיאה כללית באפליקציה: {e}")
+        print("ERROR:", e)
         return jsonify({
-            "text": f"❌ שגיאה זמנית בהורדת השיר:\n{str(e)[:200]}"
+            "text": "❌ שגיאה:\n" + str(e)[:300]
         })
 
 @app.route("/downloads/<filename>")
@@ -148,7 +156,7 @@ def health():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Bypass Downloader is live!"
+    return "Bot is running"
 
 if __name__ == "__main__":
     app.run(
