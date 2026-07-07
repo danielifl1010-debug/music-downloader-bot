@@ -9,6 +9,7 @@ app = Flask(__name__)
 
 DOWNLOAD_FOLDER = "downloads"
 
+
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
@@ -34,25 +35,42 @@ def download_song(query):
 
         "quiet": False,
 
+        "no_warnings": False,
+
+
         "extractor_args": {
+
             "youtube": {
+
                 "player_client": [
-                    "web"
+                    "android"
                 ]
+
             }
+
         },
 
+
         "postprocessors": [
+
             {
+
                 "key": "FFmpegExtractAudio",
+
                 "preferredcodec": "mp3",
+
                 "preferredquality": "192"
+
             }
+
         ]
+
     }
 
 
+
     with yt_dlp.YoutubeDL(options) as ydl:
+
 
         info = ydl.extract_info(
             "ytsearch1:" + query,
@@ -60,11 +78,17 @@ def download_song(query):
         )
 
 
-        entries = info.get("entries", [])
+        entries = info.get(
+            "entries",
+            []
+        )
 
 
         if not entries:
-            raise Exception("לא נמצא שיר")
+
+            raise Exception(
+                "לא נמצאו תוצאות"
+            )
 
 
         title = entries[0].get(
@@ -73,7 +97,25 @@ def download_song(query):
         )
 
 
-    return file_id + ".mp3", title
+
+    filename = file_id + ".mp3"
+
+
+    filepath = os.path.join(
+        DOWNLOAD_FOLDER,
+        filename
+    )
+
+
+    if not os.path.exists(filepath):
+
+        raise Exception(
+            "הקובץ לא נוצר"
+        )
+
+
+    return filename, title
+
 
 
 
@@ -82,28 +124,41 @@ def download_song(query):
 @app.route("/", methods=["POST"])
 def chat():
 
-
     try:
 
+
         data = request.get_json()
+
+
+        print("REQUEST:")
+        print(data)
+
 
 
         text = ""
 
 
         if "chat" in data:
+
             text = data["chat"]["messagePayload"]["message"]["text"]
 
 
         elif "message" in data:
-            text = data["message"].get("text", "")
+
+            text = data["message"].get(
+                "text",
+                ""
+            )
 
 
 
         if not text:
 
             return jsonify({
-                "text": "❌ לא התקבל שם שיר"
+
+                "text":
+                "❌ לא התקבל שם שיר"
+
             })
 
 
@@ -138,15 +193,20 @@ def chat():
     except Exception as e:
 
 
-        print("ERROR:", e)
+        print("ERROR:")
+        print(str(e))
+
 
 
         return jsonify({
 
             "text":
-            "❌ שגיאה:\n" + str(e)[:500]
+            "❌ שגיאה:\n"
+            +
+            str(e)[:500]
 
         })
+
 
 
 
@@ -161,6 +221,12 @@ def download(filename):
         DOWNLOAD_FOLDER,
         filename
     )
+
+
+    if not os.path.exists(path):
+
+        return "File not found", 404
+
 
 
     return send_file(
@@ -187,6 +253,7 @@ def health():
 def home():
 
     return "Bot is running"
+
 
 
 
