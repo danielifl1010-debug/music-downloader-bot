@@ -4,6 +4,7 @@ import uuid
 import glob
 import time
 import requests
+import re
 
 app = Flask(__name__)
 
@@ -18,28 +19,43 @@ def clean_old_files():
         except:
             pass
 
+def search_youtube_scraped(query):
+    """מנוע חיפוש חלופי ויציב ישירות מול פלטפורמות וידאו ללא צורך ב-API חיצוני שקורס"""
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        url = f"https://www.youtube.com/results?search_query={requests.utils.quote(query)}"
+        res = requests.get(url, headers=headers, timeout=10)
+        
+        # חילוץ מזהה הוידאו הראשון שמופיע בדף התוצאות באמצעות regex
+        video_ids = re.findall(r"watch\?v=([a-zA-Z0-9_-]{11})", res.text)
+        if video_ids:
+            return video_ids[0], query
+    except Exception as e:
+        print(f"Scraper search failed: {e}")
+    return None, None
+
 def download_song(query):
     clean_old_files()
     file_id = str(uuid.uuid4())
     filename = f"{file_id}.mp3"
     file_path = os.path.join(DOWNLOAD_FOLDER, filename)
     
-    # שלב 1: חיפוש ביוטיוב דרך מנוע פתוח לקבלת מזהה הסרטון (Video ID)
-    try:
-        print(f"מחפש ביוטיוב: {query}")
-        search_url = f"https://io.sccon.top/search?q={requests.utils.quote(query)}"
-        search_res = requests.get(search_url, timeout=10).json()
-        
-        if search_res and isinstance(search_res, list) and len(search_res) > 0:
-            video_id = search_res[0].get('id')
-            title = search_res[0].get('title', 'שיר')
-            print(f"נמצא סרטון: {title} (ID: {video_id})")
-        else:
-            raise Exception("לא נמצאו תוצאות חיפוש")
-            
-    except Exception as e:
-        print(f"חיפוש נכשל: {e}")
-        raise Exception("לא הצלחתי למצוא את השיר ביוטיוב.")
+    # שלב 1: חיפוש מזהה הסרטון
+    video_id, title = search_youtube_scraped(query)
+    
+    # ניסיון גיבוי אם החיפוש הישיר נכשל
+    if not video_id:
+        try:
+            # מנוע חיפוש חלופי דרך API ציבורי אחר
+            backup_search = requests.get(f"https://pipedapi.kavin.rocks/search?q={requests.utils.quote(query)}&filter=videos", timeout=10).json()
+            if backup_search and "streams" in backup_search and len(backup_search["streams"]) > 0:
+                video_id = backup_search["streams"][0]["url"].split("v=")[-1]
+                title = backup_search["streams"][0].get("title", query)
+        except Exception as e:
+            print(f"Backup search failed: {e}")
+
+    if not video_id:
+        raise Exception("לא הצלחתי לאתר את השיר ביוטיוב. נסה שם אחר או קישור ישיר.")
 
     # שלב 2: פנייה לשרתי המרה חיצוניים חסיני-חסימות לקבלת קובץ ה-MP3
     bypass_apis = [
@@ -71,7 +87,7 @@ def download_song(query):
             print(f"מנוע המרה ספציפי נכשל: {e}")
             continue
 
-    raise Exception("שרתי ההמורה החיצוניים עמוסים כרגע. נסה שוב בעוד רגע.")
+    raise Exception("שרתי ההמורה החיצוניים עמוסים כרגע. נסה שוב בעוד מספר רגעים.")
 
 @app.route("/", methods=["POST"])
 def chat():
