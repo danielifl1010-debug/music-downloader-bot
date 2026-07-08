@@ -4,6 +4,7 @@ import uuid
 import glob
 import time
 import yt_dlp
+from youtubesearchpython import VideosSearch
 
 app = Flask(__name__)
 
@@ -18,20 +19,44 @@ def clean_old_files():
         except:
             pass
 
+def search_youtube_link(query):
+    """מחפש ביוטיוב ומחזיר את הקישור הישיר לסרטון הראשון"""
+    try:
+        print(f"--- מפעיל חיפוש חיצוני עבור: {query} ---")
+        videos_search = VideosSearch(query, limit=1)
+        results = videos_search.result()
+        
+        if results and "result" in results and len(results["result"]) > 0:
+            video_url = results["result"][0]["link"]
+            video_title = results["result"][0]["title"]
+            print(f"--- נמצא סרטון: {video_title} -> {video_url} ---")
+            return video_url, video_title
+    except Exception as e:
+        print(f"שגיאה במנוע החיפוש החיצוני: {e}")
+    
+    return None, None
+
 def download_song(query):
     clean_old_files()
     file_id = str(uuid.uuid4())
     output = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
 
+    # אם המשתמש שלח טקסט רגיל, נמצא את הקישור הישיר קודם
+    if "youtube.com" not in query and "youtu.be" not in query:
+        video_url, video_title = search_youtube_link(query)
+        if not video_url:
+            raise Exception("לא הצלחתי למצוא תוצאות עבור השיר הזה ביוטיוב.")
+        target_url = video_url
+    else:
+        target_url = query
+
     options = {
-        # מבקש אודיו בלבד, עם עדיפות לפורמטים הסטנדרטיים והקלים ביותר להורדה
+        # מבקש את האודיו הזמין הטוב ביותר
         "format": "ba/ba*",
         "outtmpl": output,
         "noplaylist": True,
         "quiet": False,
-        "default_search": "ytsearch1",
         "socket_timeout": 30,
-        # שימוש בארגומנטים שמדמים לקוח iOS/Safari מובנה, שנחשב להרבה יותר יציב מול חסימות
         "extractor_args": {
             "youtube": {
                 "player_client": ["ios", "web_safari"],
@@ -43,35 +68,29 @@ def download_song(query):
         }
     }
 
-    print(f"--- תחילת תהליך חיפוש עבור: {query} ---")
+    print(f"--- yt-dlp מתחיל הורדה ישירה מהקישור: {target_url} ---")
 
-    with yt_dlp.YoutubeDL(options) as ydl:
-        search_query = query if "youtube.com" in query or "youtu.be" in query else f"ytsearch1:{query}"
-        
-        # חילוץ המידע עם טיפול בשגיאות כדי למנוע קריסת NoneType
-        try:
-            info = ydl.extract_info(search_query, download=True)
-        except Exception as e:
-            print(f"שגיאה של yt-dlp בזמן חילוץ המידע: {e}")
-            raise Exception("יוטיוב חסם את בקשת ההורדה הנוכחית. נסה שוב בעוד מספר דקות.")
+    try:
+        with yt_dlp.YoutubeDL(options) as ydl:
+            info = ydl.extract_info(target_url, download=True)
+            
+        if info is None:
+            raise Exception("יוטיוב החזיר תשובה ריקה בניסיון ההורדה.")
 
-    # בדיקה הגנתית שקיבלנו מידע תקין מיוטיוב
-    if info is None:
-        raise Exception("לא התקבל מידע מיוטיוב עבור החיפוש הזה.")
-
-    if "entries" in info and len(info["entries"]) > 0:
-        title = info["entries"][0].get("title", "שיר")
-    else:
         title = info.get("title", "שיר")
 
-    # סריקה דינמית של הקובץ שנוצר פיזית בתיקייה
-    files = glob.glob(os.path.join(DOWNLOAD_FOLDER, f"{file_id}.*"))
-    if not files:
-        raise Exception("הקובץ לא הצליח להישמר בשרת. ייתכן שיוטיוב חסם את הזרם.")
+        # סריקה דינמית של הקובץ שנוצר פיזית בתיקייה
+        files = glob.glob(os.path.join(DOWNLOAD_FOLDER, f"{file_id}.*"))
+        if not files:
+            raise Exception("הקובץ לא נשמר בשרת. ייתכן ויוטיוב חסם את זרם האודיו מהשרת.")
 
-    actual_filename = os.path.basename(files[0])
-    print(f"--- ההורדה הושלמה! קובץ שנוצר: {actual_filename} ---")
-    return actual_filename, title
+        actual_filename = os.path.basename(files[0])
+        print(f"--- ההורדה הסתיימה בהצלחה! קובץ נוצר: {actual_filename} ---")
+        return actual_filename, title
+
+    except Exception as e:
+        print(f"שגיאה של yt-dlp בזמן ההורדה: {e}")
+        raise Exception(f"יוטיוב חסם את הזרם מהכתובת הזו. שגיאה: {str(e)[:50]}")
 
 @app.route("/", methods=["POST"])
 def chat():
@@ -120,7 +139,7 @@ def health():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Direct Downloader Bot is fully stable!"
+    return "Direct Downloader Bot with Advanced Search is live!"
 
 if __name__ == "__main__":
     app.run(
