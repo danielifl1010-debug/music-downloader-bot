@@ -21,8 +21,6 @@ def clean_old_files():
 def download_song(query):
     clean_old_files()
     file_id = str(uuid.uuid4())
-    
-    # שמירה בפורמט m4a קליל כדי לא להצטרך ffmpeg ב-Render
     output = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
 
     options = {
@@ -37,34 +35,48 @@ def download_song(query):
         }
     }
 
+    # יצירת קובץ עוגיות זמני מתוך משתנה הסביבה המאובטח ב-Render
+    cookies_content = os.environ.get("YOUTUBE_COOKIES")
+    temp_cookies_path = f"temp_cookies_{file_id}.txt"
+    
+    if cookies_content:
+        print("--- נמצאו עוגיות יוטיוב במערכת, מחיל אותן לעקיפת חסימות ---")
+        with open(temp_cookies_path, "w", encoding="utf-8") as cf:
+            cf.write(cookies_content)
+        options["cookiefile"] = temp_cookies_path
+    else:
+        print("--- אזהרה: לא נמצאו עוגיות, מריץ הורדה רגילה ---")
+
     print(f"--- תחילת תהליך חיפוש עבור: {query} ---")
 
-    with yt_dlp.YoutubeDL(options) as ydl:
-        # אם המשתמש שלח קישור ישיר נשתמש בו, אחרת נחפש
-        search_query = query if "youtube.com" in query or "youtu.be" in query else f"ytsearch1:{query}"
-        info = ydl.extract_info(search_query, download=True)
+    try:
+        with yt_dlp.YoutubeDL(options) as ydl:
+            search_query = query if "youtube.com" in query or "youtu.be" in query else f"ytsearch1:{query}"
+            info = ydl.extract_info(search_query, download=True)
 
-    if "entries" in info and len(info["entries"]) > 0:
-        title = info["entries"][0]["title"]
-    else:
-        title = info.get("title", "שיר")
+        if "entries" in info and len(info["entries"]) > 0:
+            title = info["entries"][0]["title"]
+        else:
+            title = info.get("title", "שיר")
 
-    # בדיקה איזה קובץ פיזית נוצר בתיקייה
-    files = glob.glob(os.path.join(DOWNLOAD_FOLDER, f"{file_id}.*"))
+        files = glob.glob(os.path.join(DOWNLOAD_FOLDER, f"{file_id}.*"))
+        if not files:
+            raise Exception("קובץ השמע לא נשמר בהצלחה בשרת הענן.")
 
-    if not files:
-        raise Exception("קובץ השמע לא נשמר בהצלחה בשרת הענן.")
+        return os.path.basename(files[0]), title
 
-    actual_filename = os.path.basename(files[0])
-    print(f"--- ההורדה הסתיימה בהצלחה! קובץ נוצר: {actual_filename} ---")
-    return actual_filename, title
+    finally:
+        # ניקוי קובץ העוגיות הזמני בסיום הפעולה (לשמירה על אבטחה)
+        if os.path.exists(temp_cookies_path):
+            try:
+                os.remove(temp_cookies_path)
+            except:
+                pass
 
 @app.route("/", methods=["POST"])
 def chat():
     try:
         data = request.json or {}
-        print("מידע גולמי שהתקבל בשרת:", data)
-        
         text = ""
         if "chat" in data:
             text = data["chat"].get("messagePayload", {}).get("message", {}).get("text", "")
@@ -74,9 +86,7 @@ def chat():
         if not text:
             return jsonify({"text": "❌ לא קיבלתי שם שיר או הודעה תקינה בפורמט."})
 
-        print(f"מפעיל הורדה עבור הטקסט: {text}")
         filename, title = download_song(text)
-
         url = f"https://music-downloader-bot-7tve.onrender.com/downloads/{filename}"
 
         return jsonify({
@@ -104,7 +114,7 @@ def health():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Direct Downloader Bot is live and kicking!"
+    return "Direct Downloader Bot with Cookies is live!"
 
 if __name__ == "__main__":
     app.run(
