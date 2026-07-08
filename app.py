@@ -39,41 +39,59 @@ def search_youtube_link(query):
         print(f"שגיאה במנגנון החיפוש הישיר: {e}")
     return None, None
 
-def download_via_fallback_api(video_url, output_path):
-    """מנגנון גיבוי חסין חסימות - מוריד את האודיו דרך שרת צד שלישי שאינו חסום"""
-    try:
-        print("--- מפעיל מנגנון עקירת חסימה (Fallback API) ---")
-        video_id = video_url.split("v=")[-1].split("&")[0] if "v=" in video_url else video_url.split("/")[-1]
-        
-        # שימוש ב-API מהיר וציבורי להמרת יוטיוב ל-MP3
-        api_url = f"https://api.vexdile.com/v1/youtube/download?id={video_id}&type=mp3"
-        res = requests.get(api_url, timeout=30).json()
-        
-        download_link = res.get("download_url") or res.get("url")
-        if not download_link:
-            # ניסיון שני עם API חלופי נפוץ
-            api_url = f"https://api.fabdl.com/youtube/get-video-info?url={requests.utils.quote(video_url)}"
-            info = requests.get(api_url, timeout=20).json()
-            # שליפת קישור ישיר
-            mp3_api = f"https://api.fabdl.com/youtube/convert-task/{info['result']['id']}/{info['result']['audio'][0]['id']}"
-            download_link = requests.get(mp3_api, timeout=20).json()['result']['download_url']
+def download_via_cobalt_fallback(video_url, output_path):
+    """מנגנון על-חסין מבוסס Cobalt API ושרתי קהילה מבוזרים לעקיפת חסימות יוטיוב"""
+    # רשימת שרתי Cobalt ציבוריים מעודכנים ויציבים
+    cobalt_instances = [
+        "https://api.cobalt.tools",
+        "https://cobalt.moe/api",
+        "https://api.b64.to",
+        "https://pygmalion.cobalt.tools"
+    ]
+    
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    
+    payload = {
+        "url": video_url,
+        "videoQuality": "720",
+        "audioFormat": "mp3",
+        "isAudioOnly": True,
+        "filenamePattern": "classic"
+    }
+    
+    for instance in cobalt_instances:
+        try:
+            print(f"--- מנסה לחלץ אודיו דרך שרת Cobalt: {instance} ---")
+            # קריאה לקובלט לחילוץ הסטרים
+            res = requests.post(f"{instance}/stream", json=payload, headers=headers, timeout=15)
+            if res.status_code == 200:
+                data = res.json()
+                download_link = data.get("url")
+                
+                if download_link:
+                    print(f"--- הצלחה! נמצא קישור ישיר לעקיפת חסימה. מוריד קובץ לשרת... ---")
+                    # הורדת הסטרים הציבורי שקובלט יצר עבורנו
+                    file_res = requests.get(download_link, timeout=45, stream=True)
+                    with open(output_path, "wb") as f:
+                        for chunk in file_res.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                    print("--- הקובץ ירד בהצלחה משרת הגיבוי! ---")
+                    return True
+            print(f"שרת {instance} החזיר סטטוס {res.status_code}, מנסה את השרת הבא ברשימה...")
+        except Exception as e:
+            print(f"שגיאה בתקשורת מול {instance}: {e}")
+            continue
             
-        if download_link:
-            print(f"--- קישור הורדה עוקף חסימה חולץ בהצלחה. מתחיל הורדת קובץ לשרת... ---")
-            file_res = requests.get(download_link, timeout=60, stream=True)
-            with open(output_path, "wb") as f:
-                for chunk in file_res.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-            return True
-    except Exception as e:
-        print(f"מנגנון הגיבוי נכשיל גם הוא: {e}")
     return False
 
 def download_song(query):
     clean_old_files()
     file_id = str(uuid.uuid4())
-    # שומרים כ-mp3 כברירת מחדל אחידה
     output_filename = f"{file_id}.mp3"
     output = os.path.join(DOWNLOAD_FOLDER, output_filename)
 
@@ -91,16 +109,16 @@ def download_song(query):
         "outtmpl": os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s"),
         "noplaylist": True,
         "quiet": True,
-        "socket_timeout": 15,
+        "socket_timeout": 12,
         "extractor_args": {
             "youtube": {
-                "player_client": ["tv", "web"],
+                "player_client": ["tv"],
                 "skip": ["dash", "hls"]
             }
         }
     }
 
-    print(f"--- ניסיון הורדה רגיל עבור: {target_url} ---")
+    print(f"--- ניסיון הורדה ישיר עבור: {target_url} ---")
     try:
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(target_url, download=True)
@@ -110,14 +128,14 @@ def download_song(query):
         if files:
             return os.path.basename(files[0]), video_title
     except Exception as e:
-        print(f"יוטיוב חסם את הבקשה הרגילה ({e}). עובר מיד למנגנון חסין חסימות...")
+        print(f"יוטיוב חסם את השרת באופן ישיר. מפעיל מיד רשת שרתי גיבוי מבוזרת...")
         
-    # אם הגענו לכאן, השרת של Render חסום על ידי יוטיוב - מפעילים את הפתרון החלופי
-    success = download_via_fallback_api(target_url, output)
+    # הפעלה של רשת הגיבוי המבוזרת של קובלט
+    success = download_via_cobalt_fallback(target_url, output)
     if success and os.path.exists(output):
         return output_filename, video_title
         
-    raise Exception("יוטיוב חוסם את השרת באופן קבוע וכל מנגנוני העקיפה נכשלו כרגע.")
+    raise Exception("כל שרתי הגיבוי ועקיפת החסימות עמוסים או חסומים כרגע. אנא נסה שוב בעוד מספר רגעים.")
 
 @app.route("/", methods=["POST"])
 def chat():
@@ -159,7 +177,7 @@ def health():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Direct Downloader Bot with Advanced Anti-Block Bypass is Live!"
+    return "Direct Downloader Bot with Distributed Cobalt Bypass Network is Live!"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
