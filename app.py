@@ -21,61 +21,57 @@ def clean_old_files():
 def download_song(query):
     clean_old_files()
     file_id = str(uuid.uuid4())
-    
-    # משתמשים בפורמט פלט גמיש שיקבל כל סיומת שהורדה (m4a, webm, או אופציות אחרות)
     output = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
 
     options = {
-        # שינוי קריטי: מבקש את האודיו הטוב ביותר שיש, ללא הגבלת סוג קובץ קשיחה
-        "format": "bestaudio/best",
+        # מבקש אודיו בלבד, עם עדיפות לפורמטים הסטנדרטיים והקלים ביותר להורדה
+        "format": "ba/ba*",
         "outtmpl": output,
         "noplaylist": True,
         "quiet": False,
         "default_search": "ytsearch1",
         "socket_timeout": 30,
-        # עוקף בעיות חתימה דיגיטלית של סרטונים מוגנים
-        "ignoreerrors": True,
+        # שימוש בארגומנטים שמדמים לקוח iOS/Safari מובנה, שנחשב להרבה יותר יציב מול חסימות
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "web_safari"],
+                "skip": ["dash", "hls"]
+            }
+        },
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1"
         }
     }
 
-    cookies_content = os.environ.get("YOUTUBE_COOKIES")
-    temp_cookies_path = f"temp_cookies_{file_id}.txt"
-    
-    if cookies_content:
-        print("--- נמצאו עוגיות יוטיוב במערכת, מחיל אותן לעקיפת חסימות ---")
-        with open(temp_cookies_path, "w", encoding="utf-8") as cf:
-            cf.write(cookies_content)
-        options["cookiefile"] = temp_cookies_path
-    else:
-        print("--- אזהרה: לא נמצאו עוגיות, מריץ הורדה רגילה ---")
-
     print(f"--- תחילת תהליך חיפוש עבור: {query} ---")
 
-    try:
-        with yt_dlp.YoutubeDL(options) as ydl:
-            search_query = query if "youtube.com" in query or "youtu.be" in query else f"ytsearch1:{query}"
+    with yt_dlp.YoutubeDL(options) as ydl:
+        search_query = query if "youtube.com" in query or "youtu.be" in query else f"ytsearch1:{query}"
+        
+        # חילוץ המידע עם טיפול בשגיאות כדי למנוע קריסת NoneType
+        try:
             info = ydl.extract_info(search_query, download=True)
+        except Exception as e:
+            print(f"שגיאה של yt-dlp בזמן חילוץ המידע: {e}")
+            raise Exception("יוטיוב חסם את בקשת ההורדה הנוכחית. נסה שוב בעוד מספר דקות.")
 
-        if "entries" in info and len(info["entries"]) > 0:
-            title = info["entries"][0]["title"]
-        else:
-            title = info.get("title", "שיר")
+    # בדיקה הגנתית שקיבלנו מידע תקין מיוטיוב
+    if info is None:
+        raise Exception("לא התקבל מידע מיוטיוב עבור החיפוש הזה.")
 
-        # חיפוש דינמי של הקובץ שנוצר בתיקייה (לא משנה מה הסיומת שלו m4a/webm)
-        files = glob.glob(os.path.join(DOWNLOAD_FOLDER, f"{file_id}.*"))
-        if not files:
-            raise Exception("קובץ השמע לא נשמר בהצלחה בשרת הענן.")
+    if "entries" in info and len(info["entries"]) > 0:
+        title = info["entries"][0].get("title", "שיר")
+    else:
+        title = info.get("title", "שיר")
 
-        return os.path.basename(files[0]), title
+    # סריקה דינמית של הקובץ שנוצר פיזית בתיקייה
+    files = glob.glob(os.path.join(DOWNLOAD_FOLDER, f"{file_id}.*"))
+    if not files:
+        raise Exception("הקובץ לא הצליח להישמר בשרת. ייתכן שיוטיוב חסם את הזרם.")
 
-    finally:
-        if os.path.exists(temp_cookies_path):
-            try:
-                os.remove(temp_cookies_path)
-            except:
-                pass
+    actual_filename = os.path.basename(files[0])
+    print(f"--- ההורדה הושלמה! קובץ שנוצר: {actual_filename} ---")
+    return actual_filename, title
 
 @app.route("/", methods=["POST"])
 def chat():
@@ -105,7 +101,6 @@ def chat():
 
 @app.route("/downloads/<filename>")
 def downloads(filename):
-    # זיהוי אוטומטי של סוג הקובץ לפי הסיומת שלו (תומך גם ב-webm וגם ב-m4a)
     if filename.endswith(".m4a"):
         mimetype = "audio/mp4"
     elif filename.endswith(".webm"):
@@ -125,7 +120,7 @@ def health():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Direct Downloader Bot with Cookies is live!"
+    return "Direct Downloader Bot is fully stable!"
 
 if __name__ == "__main__":
     app.run(
