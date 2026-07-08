@@ -21,7 +21,6 @@ def clean_old_files():
             pass
 
 def search_youtube_link(query):
-    """מחפש ביוטיוב ומחלץ את קישור הוידאו הראשון בצורה ידנית וחסינה"""
     try:
         print(f"--- מפעיל חיפוש ישיר ביוטיוב עבור: {query} ---")
         headers = {
@@ -45,6 +44,14 @@ def download_song(query):
     file_id = str(uuid.uuid4())
     output = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
 
+    # הפתרון הסופי: יצירת קובץ עוגיות זמני מתוך משתני הסביבה המאובטחים של Render
+    cookies_content = os.environ.get("YT_COOKIES")
+    cookies_file_path = None
+    if cookies_content:
+        cookies_file_path = os.path.join(DOWNLOAD_FOLDER, f"cookies_{file_id}.txt")
+        with open(cookies_file_path, "w", encoding="utf-8") as f:
+            f.write(cookies_content)
+
     if "youtube.com" not in query and "youtu.be" not in query:
         video_url, video_title = search_youtube_link(query)
         if not video_url:
@@ -53,7 +60,6 @@ def download_song(query):
     else:
         target_url = query
 
-    # הגדרות יציבות ונקיות שמשתמשות בתוסף האוטומטי שהוספנו ל-requirements.txt
     options = {
         "format": "ba/ba*",
         "outtmpl": output,
@@ -62,7 +68,7 @@ def download_song(query):
         "socket_timeout": 30,
         "extractor_args": {
             "youtube": {
-                "player_client": ["web"],
+                "player_client": ["web", "ios"],
                 "skip": ["dash", "hls"]
             }
         },
@@ -71,7 +77,11 @@ def download_song(query):
         }
     }
 
-    print(f"--- yt-dlp מתחיל הורדה ישירה מהקישור: {target_url} ---")
+    # הזרקת קובץ העוגיות החוקי לתוך הגדרות yt-dlp
+    if cookies_file_path:
+        options["cookiefile"] = cookies_file_path
+
+    print(f"--- yt-dlp מתחיל הורדה ישירה ומאובטחת באמצעות Cookies מהקישור: {target_url} ---")
 
     try:
         with yt_dlp.YoutubeDL(options) as ydl:
@@ -91,7 +101,14 @@ def download_song(query):
 
     except Exception as e:
         print(f"שגיאה בזמן ההורדה של yt-dlp: {e}")
-        raise Exception(f"שגיאה בהורדת הקובץ מיוטיוב: {str(e)[:50]}")
+        raise Exception(f"שגיאה בהורדת הקובץ מיוטיוב: {str(e)[:100]}")
+    finally:
+        # ניקוי ואבטחה: מחיקת קובץ העוגיות הזמני מיד בסיום הפעולה שלא יישאר בשרת
+        if cookies_file_path and os.path.exists(cookies_file_path):
+            try:
+                os.remove(cookies_file_path)
+            except:
+                pass
 
 @app.route("/", methods=["POST"])
 def chat():
@@ -134,7 +151,7 @@ def health():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Direct Downloader Bot is fully stable!"
+    return "Direct Downloader Bot is fully active with secure cookie-bypass!"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
