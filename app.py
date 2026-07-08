@@ -21,21 +21,25 @@ def clean_old_files():
 def download_song(query):
     clean_old_files()
     file_id = str(uuid.uuid4())
+    
+    # משתמשים בפורמט פלט גמיש שיקבל כל סיומת שהורדה (m4a, webm, או אופציות אחרות)
     output = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
 
     options = {
-        "format": "bestaudio[ext=m4a]/bestaudio/best",
+        # שינוי קריטי: מבקש את האודיו הטוב ביותר שיש, ללא הגבלת סוג קובץ קשיחה
+        "format": "bestaudio/best",
         "outtmpl": output,
         "noplaylist": True,
         "quiet": False,
         "default_search": "ytsearch1",
         "socket_timeout": 30,
+        # עוקף בעיות חתימה דיגיטלית של סרטונים מוגנים
+        "ignoreerrors": True,
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
     }
 
-    # יצירת קובץ עוגיות זמני מתוך משתנה הסביבה המאובטח ב-Render
     cookies_content = os.environ.get("YOUTUBE_COOKIES")
     temp_cookies_path = f"temp_cookies_{file_id}.txt"
     
@@ -59,6 +63,7 @@ def download_song(query):
         else:
             title = info.get("title", "שיר")
 
+        # חיפוש דינמי של הקובץ שנוצר בתיקייה (לא משנה מה הסיומת שלו m4a/webm)
         files = glob.glob(os.path.join(DOWNLOAD_FOLDER, f"{file_id}.*"))
         if not files:
             raise Exception("קובץ השמע לא נשמר בהצלחה בשרת הענן.")
@@ -66,7 +71,6 @@ def download_song(query):
         return os.path.basename(files[0]), title
 
     finally:
-        # ניקוי קובץ העוגיות הזמני בסיום הפעולה (לשמירה על אבטחה)
         if os.path.exists(temp_cookies_path):
             try:
                 os.remove(temp_cookies_path)
@@ -101,7 +105,14 @@ def chat():
 
 @app.route("/downloads/<filename>")
 def downloads(filename):
-    mimetype = "audio/mp4" if filename.endswith(".m4a") else "audio/mpeg"
+    # זיהוי אוטומטי של סוג הקובץ לפי הסיומת שלו (תומך גם ב-webm וגם ב-m4a)
+    if filename.endswith(".m4a"):
+        mimetype = "audio/mp4"
+    elif filename.endswith(".webm"):
+        mimetype = "audio/webm"
+    else:
+        mimetype = "audio/mpeg"
+        
     return send_file(
         os.path.join(DOWNLOAD_FOLDER, filename),
         as_attachment=True,
