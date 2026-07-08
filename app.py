@@ -5,7 +5,6 @@ import glob
 import time
 import re
 import requests
-import yt_dlp
 
 app = Flask(__name__)
 
@@ -39,55 +38,63 @@ def search_youtube_link(query):
         print(f"שגיאה במנגנון החיפוש הישיר: {e}")
     return None, None
 
-def download_via_cobalt_fallback(video_url, output_path):
-    """מנגנון על-חסין מבוסס Cobalt API ושרתי קהילה מבוזרים לעקיפת חסימות יוטיוב"""
-    # רשימת שרתי Cobalt ציבוריים מעודכנים ויציבים
-    cobalt_instances = [
-        "https://api.cobalt.tools",
-        "https://cobalt.moe/api",
-        "https://api.b64.to",
-        "https://pygmalion.cobalt.tools"
+def download_via_global_mesh(video_url, output_path):
+    """ארכיטקטורת 100 צעדים קדימה: רשת שרתים עולמית ברוטציה אוטומטית"""
+    video_id = video_url.split("v=")[-1].split("&")[0] if "v=" in video_url else video_url.split("/")[-1]
+    
+    # רשת שרתי קצה מבוזרים (Piped & Invidious Mesh)
+    global_endpoints = [
+        "https://pipedapi.kavin.rocks/streams/",
+        "https://api.piped.yt/streams/",
+        "https://pipedapi.tokyo.moe/streams/",
+        "https://piped-api.garudalinux.org/streams/",
+        "https://invidious.nerdvpn.de/api/v1/videos/",
+        "https://yewtu.be/api/v1/videos/",
+        "https://iv.melmac.space/api/v1/videos/"
     ]
     
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-    
-    payload = {
-        "url": video_url,
-        "videoQuality": "720",
-        "audioFormat": "mp3",
-        "isAudioOnly": True,
-        "filenamePattern": "classic"
-    }
-    
-    for instance in cobalt_instances:
+    for endpoint in global_endpoints:
         try:
-            print(f"--- מנסה לחלץ אודיו דרך שרת Cobalt: {instance} ---")
-            # קריאה לקובלט לחילוץ הסטרים
-            res = requests.post(f"{instance}/stream", json=payload, headers=headers, timeout=15)
-            if res.status_code == 200:
-                data = res.json()
-                download_link = data.get("url")
+            print(f"--- רשת הרוטציה מנסה לעקוף חסימה דרך: {endpoint} ---")
+            url = f"{endpoint}{video_id}"
+            res = requests.get(url, timeout=10)
+            
+            if res.status_code != 200:
+                continue
                 
-                if download_link:
-                    print(f"--- הצלחה! נמצא קישור ישיר לעקיפת חסימה. מוריד קובץ לשרת... ---")
-                    # הורדת הסטרים הציבורי שקובלט יצר עבורנו
-                    file_res = requests.get(download_link, timeout=45, stream=True)
-                    with open(output_path, "wb") as f:
-                        for chunk in file_res.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                    print("--- הקובץ ירד בהצלחה משרת הגיבוי! ---")
-                    return True
-            print(f"שרת {instance} החזיר סטטוס {res.status_code}, מנסה את השרת הבא ברשימה...")
+            data = res.json()
+            title = data.get("title", "שיר מיוטיוב")
+            direct_audio_url = None
+            
+            # אם זה שרת מסוג Piped API
+            if "audioStreams" in data:
+                audio_streams = data.get("audioStreams", [])
+                if audio_streams:
+                    # לוקחים את האיכות הגבוהה ביותר
+                    audio_streams.sort(key=lambda x: x.get("bitrate", 0), reverse=True)
+                    direct_audio_url = audio_streams[0].get("url")
+            
+            # אם זה שרת מסוג Invidious API
+            elif "adaptiveFormats" in data:
+                audio_streams = [f for f in data.get("adaptiveFormats", []) if "audio" in f.get("type", "")]
+                if audio_streams:
+                    audio_streams.sort(key=lambda x: int(x.get("bitrate", 0)), reverse=True)
+                    direct_audio_url = audio_streams[0].get("url")
+            
+            if direct_audio_url:
+                print(f"--- המעקף הצליח! מוריד מזרים ישיר למערכת הפעלה... ---")
+                file_res = requests.get(direct_audio_url, timeout=45, stream=True)
+                with open(output_path, "wb") as f:
+                    for chunk in file_res.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                return True, title
+                
         except Exception as e:
-            print(f"שגיאה בתקשורת מול {instance}: {e}")
+            print(f"נקודת קצה {endpoint} נכשלה, עובר אוטומטית לבאה בתור. שגיאה: {e}")
             continue
             
-    return False
+    return False, None
 
 def download_song(query):
     clean_old_files()
@@ -104,38 +111,11 @@ def download_song(query):
         target_url = query
         video_title = "שיר מיוטיוב"
 
-    options = {
-        "format": "ba/ba*",
-        "outtmpl": os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s"),
-        "noplaylist": True,
-        "quiet": True,
-        "socket_timeout": 12,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["tv"],
-                "skip": ["dash", "hls"]
-            }
-        }
-    }
-
-    print(f"--- ניסיון הורדה ישיר עבור: {target_url} ---")
-    try:
-        with yt_dlp.YoutubeDL(options) as ydl:
-            info = ydl.extract_info(target_url, download=True)
-            video_title = info.get("title", video_title)
-            
-        files = glob.glob(os.path.join(DOWNLOAD_FOLDER, f"{file_id}.*"))
-        if files:
-            return os.path.basename(files[0]), video_title
-    except Exception as e:
-        print(f"יוטיוב חסם את השרת באופן ישיר. מפעיל מיד רשת שרתי גיבוי מבוזרת...")
-        
-    # הפעלה של רשת הגיבוי המבוזרת של קובלט
-    success = download_via_cobalt_fallback(target_url, output)
+    success, title = download_via_global_mesh(target_url, output)
     if success and os.path.exists(output):
-        return output_filename, video_title
+        return output_filename, title
         
-    raise Exception("כל שרתי הגיבוי ועקיפת החסימות עמוסים או חסומים כרגע. אנא נסה שוב בעוד מספר רגעים.")
+    raise Exception("כל רשתות הגיבוי העולמיות חסומות כרגע על ידי יוטיוב. נסה שוב מאוחר יותר.")
 
 @app.route("/", methods=["POST"])
 def chat():
@@ -164,12 +144,7 @@ def chat():
 
 @app.route("/downloads/<filename>")
 def downloads(filename):
-    mimetype = "audio/mpeg"
-    if filename.endswith(".m4a"):
-        mimetype = "audio/mp4"
-    elif filename.endswith(".webm"):
-        mimetype = "audio/webm"
-    return send_file(os.path.join(DOWNLOAD_FOLDER, filename), as_attachment=True, mimetype=mimetype)
+    return send_file(os.path.join(DOWNLOAD_FOLDER, filename), as_attachment=True, mimetype="audio/mpeg")
 
 @app.route("/health")
 def health():
@@ -177,7 +152,7 @@ def health():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Direct Downloader Bot with Distributed Cobalt Bypass Network is Live!"
+    return "Direct Downloader Bot with 100-Steps-Ahead Global Mesh Network is Live!"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
