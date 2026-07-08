@@ -3,3 +3,4 @@ requests==2.31.0
 gunicorn==21.2.0
 wheel
 yt-dlp==2025.1.26
+yt-dlp-get-pot
