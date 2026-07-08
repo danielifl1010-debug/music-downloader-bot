@@ -3,8 +3,9 @@ import os
 import uuid
 import glob
 import time
+import re
+import requests
 import yt_dlp
-from youtubesearchpython import VideosSearch
 
 app = Flask(__name__)
 
@@ -20,19 +21,28 @@ def clean_old_files():
             pass
 
 def search_youtube_link(query):
-    """מחפש ביוטיוב ומחזיר את הקישור הישיר לסרטון הראשון"""
+    """מחפש ביוטיוב ומחלץ את קישור הוידאו הראשון בצורה ידנית וחסינה"""
     try:
-        print(f"--- מפעיל חיפוש חיצוני עבור: {query} ---")
-        videos_search = VideosSearch(query, limit=1)
-        results = videos_search.result()
+        print(f"--- מפעיל חיפוש ישיר ביוטיוב עבור: {query} ---")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        # ביצוע בקשת חיפוש פשוטה ליוטיוב
+        search_url = f"https://www.youtube.com/results?search_query={requests.utils.quote(query)}"
+        response = requests.get(search_url, headers=headers, timeout=15)
         
-        if results and "result" in results and len(results["result"]) > 0:
-            video_url = results["result"][0]["link"]
-            video_title = results["result"][0]["title"]
-            print(f"--- נמצא סרטון: {video_title} -> {video_url} ---")
-            return video_url, video_title
+        # חיפוש ה-Video ID הראשון שמופיע בדף באמצעות Regex
+        video_ids = re.findall(r"\"videoId\":\"([^\"]+)\"", response.text)
+        
+        if video_ids:
+            # מניעת כפילויות ולקיחת התוצאה הראשונה
+            first_id = video_ids[0]
+            video_url = f"https://www.youtube.com/watch?v={first_id}"
+            print(f"--- נמצא מזהה סרטון: {first_id} -> {video_url} ---")
+            return video_url, query
+            
     except Exception as e:
-        print(f"שגיאה במנוע החיפוש החיצוני: {e}")
+        print(f"שגיאה במנגנון החיפוש הישיר: {e}")
     
     return None, None
 
@@ -41,7 +51,7 @@ def download_song(query):
     file_id = str(uuid.uuid4())
     output = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
 
-    # אם המשתמש שלח טקסט רגיל, נמצא את הקישור הישיר קודם
+    # אם זה לא קישור ישיר, נבצע את החיפוש הידני שלנו
     if "youtube.com" not in query and "youtu.be" not in query:
         video_url, video_title = search_youtube_link(query)
         if not video_url:
@@ -51,7 +61,6 @@ def download_song(query):
         target_url = query
 
     options = {
-        # מבקש את האודיו הזמין הטוב ביותר
         "format": "ba/ba*",
         "outtmpl": output,
         "noplaylist": True,
@@ -79,17 +88,16 @@ def download_song(query):
 
         title = info.get("title", "שיר")
 
-        # סריקה דינמית של הקובץ שנוצר פיזית בתיקייה
         files = glob.glob(os.path.join(DOWNLOAD_FOLDER, f"{file_id}.*"))
         if not files:
-            raise Exception("הקובץ לא נשמר בשרת. ייתכן ויוטיוב חסם את זרם האודיו מהשרת.")
+            raise Exception("הקובץ לא נשמר בשרת הענן.")
 
         actual_filename = os.path.basename(files[0])
         print(f"--- ההורדה הסתיימה בהצלחה! קובץ נוצר: {actual_filename} ---")
         return actual_filename, title
 
     except Exception as e:
-        print(f"שגיאה של yt-dlp בזמן ההורדה: {e}")
+        print(f"שגיאה בזמן ההורדה של yt-dlp: {e}")
         raise Exception(f"יוטיוב חסם את הזרם מהכתובת הזו. שגיאה: {str(e)[:50]}")
 
 @app.route("/", methods=["POST"])
@@ -109,7 +117,7 @@ def chat():
         url = f"https://music-downloader-bot-7tve.onrender.com/downloads/{filename}"
 
         return jsonify({
-            "text": f"🎵 **{title}**\n\n⬇️ השיר מוכן להורדה! לחץ על הקישור:\n{url}"
+            "text": f"🎵 **{title}**\n\n⬇/ השיר מוכן להורדה! לחץ על הקישור:\n{url}"
         })
 
     except Exception as e:
@@ -139,7 +147,7 @@ def health():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Direct Downloader Bot with Advanced Search is live!"
+    return "Direct Downloader Bot is fully operational!"
 
 if __name__ == "__main__":
     app.run(
