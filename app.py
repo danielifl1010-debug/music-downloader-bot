@@ -44,7 +44,6 @@ def download_song(query):
     file_id = str(uuid.uuid4())
     output = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
 
-    # הפתרון הסופי: יצירת קובץ עוגיות זמני מתוך משתני הסביבה המאובטחים של Render
     cookies_content = os.environ.get("YT_COOKIES")
     cookies_file_path = None
     if cookies_content:
@@ -66,9 +65,10 @@ def download_song(query):
         "noplaylist": True,
         "quiet": False,
         "socket_timeout": 30,
+        "remote_components": ["ejs:github"],  # מאפשר לשרת להוריד פותר חתימות אוטומטי מ-GitHub למניעת שגיאות פענוח
         "extractor_args": {
             "youtube": {
-                "player_client": ["web", "ios"],
+                "player_client": ["android", "web"],  # אנדרואיד עובד מושלם עם עוגיות ועוקף את שגיאות החתימה
                 "skip": ["dash", "hls"]
             }
         },
@@ -77,7 +77,6 @@ def download_song(query):
         }
     }
 
-    # הזרקת קובץ העוגיות החוקי לתוך הגדרות yt-dlp
     if cookies_file_path:
         options["cookiefile"] = cookies_file_path
 
@@ -103,7 +102,6 @@ def download_song(query):
         print(f"שגיאה בזמן ההורדה של yt-dlp: {e}")
         raise Exception(f"שגיאה בהורדת הקובץ מיוטיוב: {str(e)[:100]}")
     finally:
-        # ניקוי ואבטחה: מחיקת קובץ העוגיות הזמני מיד בסיום הפעולה שלא יישאר בשרת
         if cookies_file_path and os.path.exists(cookies_file_path):
             try:
                 os.remove(cookies_file_path)
