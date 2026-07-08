@@ -27,15 +27,12 @@ def search_youtube_link(query):
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-        # ביצוע בקשת חיפוש פשוטה ליוטיוב
         search_url = f"https://www.youtube.com/results?search_query={requests.utils.quote(query)}"
         response = requests.get(search_url, headers=headers, timeout=15)
         
-        # חיפוש ה-Video ID הראשון שמופיע בדף באמצעות Regex
         video_ids = re.findall(r"\"videoId\":\"([^\"]+)\"", response.text)
         
         if video_ids:
-            # מניעת כפילויות ולקיחת התוצאה הראשונה
             first_id = video_ids[0]
             video_url = f"https://www.youtube.com/watch?v={first_id}"
             print(f"--- נמצא מזהה סרטון: {first_id} -> {video_url} ---")
@@ -51,7 +48,6 @@ def download_song(query):
     file_id = str(uuid.uuid4())
     output = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
 
-    # אם זה לא קישור ישיר, נבצע את החיפוש הידני שלנו
     if "youtube.com" not in query and "youtu.be" not in query:
         video_url, video_title = search_youtube_link(query)
         if not video_url:
@@ -73,9 +69,16 @@ def download_song(query):
             }
         },
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
     }
+
+    # חיבור העוגיות המאובטחות מתוך ה-Secret Files של Render
+    if os.path.exists("cookies.txt"):
+        print("--- נמצא קובץ cookies.txt סודי בשרת! מחיל את העוגיות לעקיפת חסימת הבוטים ---")
+        options["cookiefile"] = "cookies.txt"
+    else:
+        print("--- אזהרה: לא נמצא קובץ cookies.txt, מנסה להוריד ללא עוגיות ---")
 
     print(f"--- yt-dlp מתחיל הורדה ישירה מהקישור: {target_url} ---")
 
@@ -117,7 +120,7 @@ def chat():
         url = f"https://music-downloader-bot-7tve.onrender.com/downloads/{filename}"
 
         return jsonify({
-            "text": f"🎵 **{title}**\n\n⬇/ השיר מוכן להורדה! לחץ על הקישור:\n{url}"
+            "text": f"🎵 **{title}**\n\n⬇️ השיר מוכן להורדה! לחץ על הקישור:\n{url}"
         })
 
     except Exception as e:
@@ -147,7 +150,7 @@ def health():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Direct Downloader Bot is fully operational!"
+    return "Direct Downloader Bot with Secured Cookies is live!"
 
 if __name__ == "__main__":
     app.run(
