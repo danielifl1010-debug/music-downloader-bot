@@ -44,13 +44,6 @@ def download_song(query):
     file_id = str(uuid.uuid4())
     output = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
 
-    cookies_content = os.environ.get("YT_COOKIES")
-    cookies_file_path = None
-    if cookies_content:
-        cookies_file_path = os.path.join(DOWNLOAD_FOLDER, f"cookies_{file_id}.txt")
-        with open(cookies_file_path, "w", encoding="utf-8") as f:
-            f.write(cookies_content)
-
     if "youtube.com" not in query and "youtu.be" not in query:
         video_url, video_title = search_youtube_link(query)
         if not video_url:
@@ -59,16 +52,16 @@ def download_song(query):
     else:
         target_url = query
 
+    # פתרון ה-TV המוחלט: עוקף חסימות IP, לא דורש עוגיות ולא דורש מנוע Node.js/Deno בשרת
     options = {
         "format": "ba/ba*",
         "outtmpl": output,
         "noplaylist": True,
         "quiet": False,
         "socket_timeout": 30,
-        "remote_components": ["ejs:github"],  # מאפשר לשרת להוריד פותר חתימות אוטומטי מ-GitHub למניעת שגיאות פענוח
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "web"],  # אנדרואיד עובד מושלם עם עוגיות ועוקף את שגיאות החתימה
+                "player_client": ["tv", "tvembedded"],  # שימוש בלעדי בלקוח טלוויזיה חכמה
                 "skip": ["dash", "hls"]
             }
         },
@@ -77,10 +70,7 @@ def download_song(query):
         }
     }
 
-    if cookies_file_path:
-        options["cookiefile"] = cookies_file_path
-
-    print(f"--- yt-dlp מתחיל הורדה ישירה ומאובטחת באמצעות Cookies מהקישור: {target_url} ---")
+    print(f"--- yt-dlp מתחיל הורדה ישירה ומאובטחת באמצעות לקוח TV מהקישור: {target_url} ---")
 
     try:
         with yt_dlp.YoutubeDL(options) as ydl:
@@ -101,12 +91,6 @@ def download_song(query):
     except Exception as e:
         print(f"שגיאה בזמן ההורדה של yt-dlp: {e}")
         raise Exception(f"שגיאה בהורדת הקובץ מיוטיוב: {str(e)[:100]}")
-    finally:
-        if cookies_file_path and os.path.exists(cookies_file_path):
-            try:
-                os.remove(cookies_file_path)
-            except:
-                pass
 
 @app.route("/", methods=["POST"])
 def chat():
@@ -149,7 +133,7 @@ def health():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Direct Downloader Bot is fully active with secure cookie-bypass!"
+    return "Direct Downloader Bot is fully active with stable TV-client bypass!"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
